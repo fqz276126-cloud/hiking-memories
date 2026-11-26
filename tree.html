@@ -742,6 +742,23 @@
     }
   });
 
+  // ---------- 进入页面自动播放（浏览器可能拦截有声自动播放，被拦截时首次点击/触摸即启动） ----------
+  function tryAutoPlay() {
+    bgm.play().then(() => {
+      showToast("背景音乐：Episode 33 · 循环播放");
+    }).catch(() => {
+      const kick = () => {
+        bgm.play().then(() => showToast("背景音乐：Episode 33 · 循环播放")).catch(() => {});
+        document.removeEventListener("pointerdown", kick);
+        document.removeEventListener("keydown", kick);
+      };
+      document.addEventListener("pointerdown", kick);
+      document.addEventListener("keydown", kick);
+      showToast("点击页面任意处即可开始播放音乐", 4200);
+    });
+  }
+  tryAutoPlay();
+
   $("gestureButton").addEventListener("click", async () => {
     if (state.gestureActive) await stopGesture();
     else await initGesture();
