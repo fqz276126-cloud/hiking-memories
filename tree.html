@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#06120f" />
+<meta name="description" content="山野回忆树：把徒步照片变成可以聚散、旋转与手势控制的粒子圣诞树。" />
+<title>山野回忆树 · 粒子与徒步记忆</title>
+<style>
+  :root {
+    --bg: #06120f; --ink: #f4f0df; --muted: #9aad9e; --gold: #e9c47a;
+    --forest: #4bbd88; --sage: #8df7c4; --warm: #ffb469; --line: rgba(233, 196, 122, .24);
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--ink); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  button, a { font: inherit; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  canvas#scene { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+  canvas#scene:active { cursor: grabbing; }
+  .topbar { position: fixed; z-index: 8; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 22px 26px; pointer-events: none; }
+  .topbar > * { pointer-events: auto; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .back { color: var(--muted); text-decoration: none; font-size: 12px; white-space: nowrap; }
+  .back:hover { color: var(--gold); }
+  .brand-name { font-size: 15px; letter-spacing: .18em; white-space: nowrap; }
+  .brand-sub { margin-top: 3px; color: var(--muted); font-size: 8px; letter-spacing: .25em; }
+  .controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+  .control-button { min-height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); background: rgba(5, 18, 14, .68); backdrop-filter: blur(14px); cursor: pointer; font-size: 11px; letter-spacing: .06em; transition: background .2s, border-color .2s; }
+  .control-button:hover, .control-button:focus-visible { border-color: var(--gold); outline: none; }
+  .control-button.active { color: #10241c; border-color: var(--gold); background: var(--gold); }
+  .control-button.gesture { border-color: rgba(141, 247, 196, .35); color: var(--sage); }
+  .control-button:disabled { opacity: .6; cursor: wait; }
+  .hint { position: fixed; z-index: 7; left: 26px; bottom: 24px; max-width: 410px; padding: 13px 16px; border: 1px solid rgba(233, 196, 122, .16); border-radius: 12px; color: var(--muted); background: rgba(5, 18, 14, .55); backdrop-filter: blur(12px); font-size: 11px; line-height: 1.9; pointer-events: none; }
+  .hint strong { display: block; margin-bottom: 3px; color: var(--ink); font-weight: 500; letter-spacing: .1em; }
+  .status { position: fixed; z-index: 8; top: 78px; right: 26px; padding: 7px 12px; border: 1px solid rgba(141, 247, 196, .22); border-radius: 999px; color: var(--sage); background: rgba(5, 18, 14, .62); font-size: 10px; letter-spacing: .08em; pointer-events: none; }
+  .photo-layer { position: fixed; z-index: 4; inset: 0; pointer-events: none; overflow: hidden; }
+  .photo-chip { position: absolute; display: block; padding: 4px 4px 13px; border: 0; border-radius: 2px; background: #f5efe0; box-shadow: 0 7px 22px rgba(0, 0, 0, .5), 0 0 18px rgba(233, 196, 122, .18); cursor: pointer; pointer-events: auto; will-change: left, top, width, transform; }
+  .photo-chip::before { content: ""; position: absolute; left: 50%; top: -4px; width: 8px; height: 8px; transform: translateX(-50%); border-radius: 50%; background: var(--gold); box-shadow: 0 0 9px rgba(233, 196, 122, .8); }
+  .photo-chip img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #10231d; }
+  .photo-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  .focus-card { position: fixed; z-index: 9; left: 50%; top: 50%; display: grid; grid-template-columns: minmax(220px, 42vw) minmax(220px, 300px); gap: 0; width: min(820px, calc(100vw - 40px)); max-height: calc(100vh - 100px); transform: translate(-50%, -50%); overflow: hidden; border: 1px solid rgba(233, 196, 122, .3); border-radius: 18px; color: var(--ink); background: rgba(7, 23, 18, .94); backdrop-filter: blur(20px); box-shadow: 0 30px 100px rgba(0, 0, 0, .65); }
+  .focus-card img { display: block; width: 100%; height: 100%; min-height: 340px; max-height: 62vh; object-fit: cover; }
+  .focus-content { position: relative; padding: 34px 26px; overflow: auto; }
+  .focus-date { color: var(--gold); font-size: 10px; letter-spacing: .14em; }
+  .focus-content h2 { margin: 12px 0 8px; font-family: "Songti SC", "STSong", serif; font-size: 28px; font-weight: 500; }
+  .focus-place { color: var(--muted); font-size: 12px; }
+  .focus-note { margin: 25px 0; color: #c8d7cb; font-size: 12px; line-height: 2; white-space: pre-wrap; }
+  .focus-route { padding-top: 14px; border-top: 1px solid rgba(233, 196, 122, .18); color: var(--muted); font-size: 11px; }
+  .focus-actions { display: flex; gap: 8px; margin-top: 24px; }
+  .focus-actions .control-button { border-radius: 10px; }
+  .camera-preview { position: fixed; z-index: 8; right: 26px; bottom: 24px; width: 132px; height: 99px; border: 1px solid rgba(233, 196, 122, .32); border-radius: 12px; object-fit: cover; background: #0a1d17; transform: scaleX(-1); box-shadow: 0 12px 40px rgba(0, 0, 0, .4); }
+  .hand-cursor { position: fixed; z-index: 10; width: 20px; height: 20px; margin: -10px 0 0 -10px; border: 1px solid var(--sage); border-radius: 50%; box-shadow: 0 0 14px rgba(141, 247, 196, .7); pointer-events: none; }
+  .hand-cursor::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--sage); }
+  .toast { position: fixed; z-index: 20; left: 50%; bottom: 92px; max-width: calc(100vw - 32px); transform: translateX(-50%); padding: 11px 17px; border: 1px solid rgba(233, 196, 122, .34); border-radius: 999px; color: #fff0d2; background: rgba(5, 18, 14, .94); box-shadow: 0 12px 40px rgba(0, 0, 0, .4); font-size: 12px; text-align: center; pointer-events: none; }
+  @media (max-width: 700px) {
+    .topbar { align-items: flex-start; padding: 14px; flex-direction: column; gap: 10px; }
+    .controls { justify-content: flex-start; }
+    .control-button { min-height: 33px; padding: 0 10px; font-size: 10px; }
+    .status { top: auto; right: 14px; bottom: 154px; }
+    .hint { left: 14px; right: 14px; bottom: 14px; max-width: none; padding: 10px 12px; font-size: 10px; }
+    .camera-preview { right: 14px; bottom: 112px; width: 92px; height: 69px; }
+    .focus-card { grid-template-columns: 1fr; width: calc(100vw - 24px); max-height: calc(100vh - 130px); overflow: auto; }
+    .focus-card img { height: 35vh; min-height: 220px; max-height: none; }
+    .focus-content { padding: 22px 20px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div class="topbar" id="topbar">
+  <div class="brand">
+    <a class="back" href="index.html">← 返回记忆馆</a>
+    <div><div class="brand-name">山野回忆树</div><div class="brand-sub">PARTICLE MEMORY TREE</div></div>
+  </div>
+  <div class="controls">
+    <button class="control-button active" data-mode="TREE" type="button">聚成树</button>
+    <button class="control-button" data-mode="SCATTER" type="button">散成星野</button>
+    <button class="control-button" data-mode="FOCUS" type="button">聚焦照片</button>
+    <button class="control-button gesture" id="gestureButton" type="button">启用手势</button>
+  </div>
+</div>
+<div class="status" id="status">鼠标与触控模式</div>
+<div class="hint" id="hint">
+  <strong>把走过的山，聚成一棵树</strong>
+  拖拽旋转，滚轮缩放，点击照片进入聚焦。按 1 / 2 / 3 切换模式，H 隐藏界面。<br />
+  启用摄像头后：握拳聚拢，张手散开，食指向上聚焦照片。
+</div>
+<div class="photo-layer" id="photoLayer"></div>
+
+<section class="focus-card" id="focusCard" aria-label="聚焦的徒步回忆" hidden>
+  <img id="focusImage" alt="聚焦的徒步照片" />
+  <div class="focus-content">
+    <div class="focus-date" id="focusDate"></div>
+    <h2 id="focusTitle"></h2>
+    <div class="focus-place" id="focusPlace"></div>
+    <p class="focus-note" id="focusNote"></p>
+    <div class="focus-route" id="focusRoute"></div>
+    <div class="focus-actions">
+      <button class="control-button" id="focusPrevious" type="button">上一张</button>
+      <button class="control-button" id="focusNext" type="button">下一张</button>
+      <button class="control-button" id="focusClose" type="button">回到树形</button>
+    </div>
+  </div>
+</section>
+
+<video class="camera-preview" id="webcam" autoplay playsinline muted hidden></video>
+<div class="hand-cursor" id="handCursor" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+  const canvas = $("scene");
+  const ctx = canvas.getContext("2d");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const state = {
+    mode: "TREE", memories: [], shownPhotos: [], photoPositions: [], focusIndex: 0,
+    rot: 0, rotationVelocity: 0, zoom: 1, dragging: false, lastPointerX: 0,
+    gestureActive: false, gestureRecognizer: null, stream: null, lastVideoTime: -1,
+    lastGesture: "", gestureCounter: 0, lastModeTime: 0, lastEffectTime: 0,
+    interfaceHidden: false, toastTimer: null
+  };
+
+  let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, treeH = 0, baseR = 0, focal = 1;
+  let particles = [], bgStars = [], sparks = [], photoObjectUrls = [];
+  let bgGrad = null, floorGrad = null, vignette = null, dbPromise = null;
+  const spriteCache = {};
+  const palette = {
+    forest: "#1c9e6c", green: "#4bbd88", sage: "#8df7c4", gold: "#e9c47a",
+    warm: "#ffb469", ice: "#dff3ff", red: "#ff7f8f", blue: "#93d8ff"
+  };
+
+  function showToast(message, duration = 3400) {
+    clearTimeout(state.toastTimer);
+    $("toast").textContent = message;
+    $("toast").hidden = false;
+    state.toastTimer = setTimeout(() => { $("toast").hidden = true; }, duration);
+  }
+
+  function formatDate(date) {
+    if (!date) return "日期待补充";
+    const parts = date.split("-");
+    return `${parts[0]} 年 ${Number(parts[1])} 月 ${Number(parts[2])} 日`;
+  }
+
+  function makeSprite(hex) {
+    if (spriteCache[hex]) return spriteCache[hex];
+    const size = 64;
+    const sprite = document.createElement("canvas");
+    sprite.width = size; sprite.height = size;
+    const context = sprite.getContext("2d");
+    const h = hex.replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map(character => character + character).join("") : h, 16);
+    const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, "rgba(255,255,255,0.76)");
+    gradient.addColorStop(.1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},.92)`);
+    gradient.addColorStop(.38, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},.32)`);
+    gradient.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, size, size);
+    spriteCache[hex] = sprite;
+    return sprite;
+  }
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error("IndexedDB unavailable"));
+      const request = indexedDB.open("hiking-memories-v1", 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("memories")) db.createObjectStore("memories", { keyPath: "id" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return dbPromise;
+  }
+
+  async function withStore(mode, operation) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("memories", mode);
+      const request = operation(transaction.objectStore("memories"));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function loadBundledPhotos() {
+    try {
+      const response = await fetch("photos.json", { cache: "no-store" });
+      if (!response.ok) return [];
+      const entries = await response.json();
+      if (!Array.isArray(entries)) return [];
+      return entries.map((entry, index) => {
+        if (!entry) return null;
+        const raw = typeof entry === "string" ? entry : entry.src || entry.file;
+        if (!raw) return null;
+        let src = raw;
+        if (!/^(https?:|data:|blob:|\/)/i.test(src) && !src.startsWith("photos/")) src = `photos/${src}`;
+        return {
+          id: `bundled-${index}`, src, custom: false, title: entry.title || "山野回忆",
+          location: entry.location || "", date: entry.date || "", distance: entry.distance || "",
+          note: entry.note || "", createdAt: index
+        };
+      }).filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async function loadCustomPhotos() {
+    try {
+      const records = await withStore("readonly", store => store.getAll());
+      return records.map(record => {
+        const src = URL.createObjectURL(record.blob);
+        photoObjectUrls.push(src);
+        return { ...record, src, custom: true };
+      });
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async function loadPhotos() {
+    const results = await Promise.all([loadBundledPhotos(), loadCustomPhotos()]);
+    state.memories = results[0].concat(results[1]).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    renderPhotoChips();
+    if (!state.memories.length) $("status").textContent = "还没有照片，先到记忆馆添加回忆";
+  }
+
+  function renderPhotoChips() {
+    const limit = W < 600 ? 5 : 8;
+    state.shownPhotos = state.memories.slice(0, limit);
+    state.photoPositions = state.shownPhotos.map((memory, index) => {
+      const t = .34 + ((index + .5) / Math.max(state.shownPhotos.length, 1)) * .5;
+      const angle = index * 2.39996 + .45;
+      const radius = baseR * Math.pow(t, .92) * 1.46;
+      return {
+        tree: { x: Math.cos(angle) * radius, y: -treeH * .5 + t * treeH, z: Math.sin(angle) * radius },
+        scatter: {
+          x: (Math.sin(index * 12.9898) * .5) * treeH * 2.1,
+          y: (Math.cos(index * 7.233) * .5) * treeH * 1.3,
+          z: (Math.sin(index * 3.141 + 1.7) * .5) * treeH * 1.4
+        }
+      };
+    });
+    const layer = $("photoLayer");
+    layer.textContent = "";
+    state.shownPhotos.forEach((memory, index) => {
+      const button = document.createElement("button");
+      button.className = "photo-chip";
+      button.type = "button";
+      button.setAttribute("aria-label", `聚焦 ${memory.title}`);
+      const image = document.createElement("img");
+      image.src = memory.src;
+      image.alt = memory.title;
+      image.draggable = false;
+      button.appendChild(image);
+      button.addEventListener("click", () => {
+        state.focusIndex = index;
+        setMode("FOCUS", true);
+      });
+      layer.appendChild(button);
+    });
+    updatePhotoChips();
+  }
+
+  function buildScene() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    treeH = Math.min(H * .64, W * .92);
+    baseR = treeH * .31;
+    cx = W / 2;
+    cy = H * .52;
+    focal = treeH * 1.7;
+
+    bgGrad = ctx.createRadialGradient(cx, H * .52, 0, cx, H * .52, Math.max(W, H) * .86);
+    bgGrad.addColorStop(0, "#0b201a");
+    bgGrad.addColorStop(.45, "#071610");
+    bgGrad.addColorStop(1, "#030a08");
+    floorGrad = ctx.createRadialGradient(cx, cy + treeH * .5, 0, cx, cy + treeH * .5, baseR * 2.7);
+    floorGrad.addColorStop(0, "rgba(75,189,136,.22)");
+    floorGrad.addColorStop(.4, "rgba(45,130,100,.08)");
+    floorGrad.addColorStop(1, "rgba(0,0,0,0)");
+    vignette = ctx.createRadialGradient(cx, H * .5, Math.min(W, H) * .3, cx, H * .5, Math.max(W, H) * .8);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,.72)");
+
+    bgStars = Array.from({ length: Math.min(180, Math.round(W * H / 11000)) }, () => ({
+      x: Math.random() * W, y: Math.random() * H * .92, r: .4 + Math.random() * 1.2,
+      tw: Math.random() * Math.PI * 2, sp: .5 + Math.random() * 1.7, alpha: .2 + Math.random() * .55
+    }));
+
+    const count = W < 600 ? 620 : 1100;
+    const lightColors = [palette.gold, palette.red, palette.blue, palette.sage, palette.warm];
+    particles = Array.from({ length: count }, (_, index) => {
+      const t = Math.random();
+      const tierPhase = (t * 7) % 1;
+      const radius = baseR * Math.pow(t, .92) * (.9 + .1 * tierPhase) * (.96 + Math.random() * .06);
+      const angle = t * 6.2 * Math.PI * 2 + (index % 7) * (Math.PI * 2 / 7) + (Math.random() - .5) * .22;
+      const tree = { x: Math.cos(angle) * radius, y: -treeH * .5 + t * treeH, z: Math.sin(angle) * radius };
+      const scatter = {
+        x: (Math.random() - .5) * treeH * 2.6,
+        y: (Math.random() - .5) * treeH * 1.7,
+        z: (Math.random() - .5) * treeH * 1.8
+      };
+      const isLight = Math.random() < .085;
+      return {
+        x: scatter.x, y: scatter.y, z: scatter.z, tree, scatter,
+        color: isLight ? lightColors[Math.floor(Math.random() * lightColors.length)] :
+          (Math.random() < .18 ? palette.sage : (Math.random() < .5 ? palette.green : palette.forest)),
+        size: isLight ? 1.7 : .8 + Math.random() * .55,
+        light: isLight, tw: Math.random() * Math.PI * 2,
+        alpha: isLight ? .86 : (.22 + Math.random() * .22) * (.58 + .42 * Math.cos((tierPhase - .5) * Math.PI * .9))
+      };
+    });
+    renderPhotoChips();
+  }
+
+  function project(x, y, z, cosR, sinR) {
+    const rx = x * cosR + z * sinR;
+    const rz = -x * sinR + z * cosR;
+    const pitch = .11;
+    const py = y * Math.cos(pitch) - rz * Math.sin(pitch);
+    const pz = y * Math.sin(pitch) + rz * Math.cos(pitch);
+    const f = focal / state.zoom;
+    const sc = f / (f + pz);
+    return { sx: cx + rx * sc, sy: cy + py * sc, sc };
+  }
+
+  function setMode(mode, force = false) {
+    const now = performance.now();
+    if (!force && now - state.lastModeTime < 250) return;
+    if (mode === "FOCUS" && !state.shownPhotos.length) {
+      showToast("请先到「山野足迹」添加一张徒步照片");
+      return;
+    }
+    state.mode = mode;
+    state.lastModeTime = now;
+    document.querySelectorAll("[data-mode]").forEach(button => button.classList.toggle("active", button.dataset.mode === mode));
+    $("focusCard").hidden = mode !== "FOCUS";
+    $("photoLayer").hidden = mode === "FOCUS";
+    if (mode === "FOCUS") renderFocus();
+    if (!state.gestureActive) {
+      $("status").textContent = mode === "TREE" ? "树形模式 · 鼠标与触控可用" :
+        mode === "SCATTER" ? "星野模式 · 拖拽旋转视角" : "照片聚焦模式 · 左右切换回忆";
+    }
+  }
+
+  function renderFocus() {
+    const memory = state.shownPhotos[state.focusIndex % Math.max(state.shownPhotos.length, 1)];
+    if (!memory) return;
+    $("focusImage").src = memory.src;
+    $("focusImage").alt = memory.title;
+    $("focusDate").textContent = formatDate(memory.date);
+    $("focusTitle").textContent = memory.title;
+    $("focusPlace").textContent = memory.location || "山野之间";
+    $("focusNote").textContent = memory.note || "那天的山风和脚步，都留在这里。";
+    $("focusRoute").textContent = memory.distance || "路线与距离未记录";
+  }
+
+  function drawBackground() {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawStars(now) {
+    ctx.globalCompositeOperation = "lighter";
+    const sprite = makeSprite(palette.ice);
+    bgStars.forEach(star => {
+      const alpha = star.alpha * (.55 + .45 * Math.sin(star.tw + now * .0012 * star.sp));
+      const size = star.r * 9;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(sprite, star.x - size / 2, star.y - size / 2, size, size);
+    });
+  }
+
+  function drawFloor() {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = .85;
+    ctx.save();
+    ctx.translate(cx, cy + treeH * .5);
+    ctx.scale(1, .25);
+    ctx.fillStyle = floorGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, baseR * 2.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticles(now, dt) {
+    const targetMode = state.mode === "TREE" ? "tree" : "scatter";
+    const ease = reduceMotion ? .035 : .025 + Math.min(dt, .05) * .9;
+    const cosR = Math.cos(state.rot);
+    const sinR = Math.sin(state.rot);
+    ctx.globalCompositeOperation = "lighter";
+    particles.forEach(particle => {
+      const target = particle[targetMode];
+      particle.x += (target.x - particle.x) * ease;
+      particle.y += (target.y - particle.y) * ease;
+      particle.z += (target.z - particle.z) * ease;
+      const pr = project(particle.x, particle.y, particle.z, cosR, sinR);
+      if (pr.sx < -60 || pr.sx > W + 60 || pr.sy < -60 || pr.sy > H + 60) return;
+      let size = particle.size * pr.sc * 5;
+      let alpha = particle.alpha;
+      if (particle.light) {
+        alpha *= .62 + .38 * Math.sin(particle.tw + now * .0042);
+        size *= 1.18;
+      } else {
+        alpha *= .55 + .45 * pr.sc;
+      }
+      alpha *= Math.min(1, .35 + pr.sc * .75);
+      if (alpha <= .01) return;
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.drawImage(makeSprite(particle.color), pr.sx - size / 2, pr.sy - size / 2, size, size);
+    });
+  }
+
+  function drawTopper(now) {
+    const pulse = .82 + .18 * Math.sin(now * .0038);
+    const pr = project(0, -treeH * .53, 0, Math.cos(state.rot), Math.sin(state.rot));
+    const size = treeH * .13 * pulse;
+    const sprite = makeSprite(palette.gold);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = .95;
+    ctx.drawImage(sprite, pr.sx - size / 2, pr.sy - size / 2, size, size);
+    ctx.save();
+    ctx.translate(pr.sx, pr.sy);
+    ctx.globalAlpha = .5;
+    ctx.scale(4.2, .55);
+    ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+    ctx.scale(1 / 4.2, 1 / .55);
+    ctx.scale(.55, 4.2);
+    ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+
+  function burst(x, y, count = 70) {
+    const colors = [palette.gold, palette.warm, palette.sage, palette.ice, palette.red];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 220;
+      sparks.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 35,
+        life: 0, max: .8 + Math.random() * 1.1, r: 1 + Math.random() * 2.2,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+  }
+
+  function drawSparks(dt) {
+    if (!sparks.length) return;
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const spark = sparks[i];
+      spark.life += dt;
+      if (spark.life >= spark.max) { sparks.splice(i, 1); continue; }
+      spark.vy += 110 * dt;
+      spark.vx *= .96; spark.vy *= .96;
+      spark.x += spark.vx * dt; spark.y += spark.vy * dt;
+      const k = 1 - spark.life / spark.max;
+      const size = spark.r * 8 * (.35 + k * .9);
+      ctx.globalAlpha = Math.max(0, k * 1.05);
+      ctx.drawImage(makeSprite(spark.color), spark.x - size / 2, spark.y - size / 2, size, size);
+    }
+  }
+
+  function drawVignette() {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function updatePhotoChips() {
+    if (state.mode === "FOCUS" || !state.photoPositions.length) return;
+    const cosR = Math.cos(state.rot);
+    const sinR = Math.sin(state.rot);
+    const children = $("photoLayer").children;
+    for (let i = 0; i < children.length; i++) {
+      const target = state.photoPositions[i][state.mode === "TREE" ? "tree" : "scatter"];
+      const pr = project(target.x, target.y, target.z, cosR, sinR);
+      const baseSize = Math.max(44, Math.min(84, treeH * .112));
+      const size = baseSize * Math.max(.72, Math.min(1.14, pr.sc));
+      const visible = pr.sx > -size && pr.sx < W + size && pr.sy > -size && pr.sy < H + size;
+      const element = children[i];
+      element.style.left = pr.sx + "px";
+      element.style.top = pr.sy + "px";
+      element.style.width = size + "px";
+      element.style.opacity = visible ? ".97" : "0";
+      element.style.pointerEvents = visible ? "auto" : "none";
+      element.style.zIndex = String(100 + Math.round(pr.sc * 100));
+      element.style.transform = `translate(-50%, -50%) rotate(${i % 2 ? 3 : -3}deg)`;
+    }
+  }
+
+  function frame(now) {
+    if (!frame.last) frame.last = now;
+    const dt = Math.min((now - frame.last) / 1000, .05);
+    frame.last = now;
+    if (!reduceMotion) state.rot += dt * .035;
+    state.rot += state.rotationVelocity * dt;
+    state.rotationVelocity *= .96;
+
+    drawBackground();
+    drawStars(now);
+    drawFloor();
+    drawParticles(now, dt);
+    drawTopper(now);
+    drawSparks(dt);
+    drawVignette();
+    updatePhotoChips();
+    requestAnimationFrame(frame);
+  }
+
+  document.querySelectorAll("[data-mode]").forEach(button => button.addEventListener("click", () => setMode(button.dataset.mode, true)));
+  $("focusClose").addEventListener("click", () => setMode("TREE", true));
+  $("focusPrevious").addEventListener("click", () => {
+    if (!state.shownPhotos.length) return;
+    state.focusIndex = (state.focusIndex - 1 + state.shownPhotos.length) % state.shownPhotos.length;
+    renderFocus();
+    burst(W / 2, H / 2, 24);
+  });
+  $("focusNext").addEventListener("click", () => {
+    if (!state.shownPhotos.length) return;
+    state.focusIndex = (state.focusIndex + 1) % state.shownPhotos.length;
+    renderFocus();
+    burst(W / 2, H / 2, 24);
+  });
+
+  canvas.addEventListener("pointerdown", event => {
+    state.dragging = true;
+    state.lastPointerX = event.clientX;
+    burst(event.clientX, event.clientY, reduceMotion ? 20 : 48);
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", event => {
+    if (!state.dragging) return;
+    const dx = event.clientX - state.lastPointerX;
+    state.lastPointerX = event.clientX;
+    state.rotationVelocity = dx * .06;
+  });
+  canvas.addEventListener("pointerup", event => {
+    state.dragging = false;
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointercancel", () => { state.dragging = false; });
+  canvas.addEventListener("wheel", event => {
+    event.preventDefault();
+    state.zoom = Math.max(.72, Math.min(1.45, state.zoom - event.deltaY * .001));
+  }, { passive: false });
+  window.addEventListener("resize", buildScene);
+  document.addEventListener("keydown", event => {
+    if (event.key === "1") setMode("TREE", true);
+    if (event.key === "2") setMode("SCATTER", true);
+    if (event.key === "3") setMode("FOCUS", true);
+    if (event.key === "h" || event.key === "H") {
+      state.interfaceHidden = !state.interfaceHidden;
+      ["topbar", "hint", "status"].forEach(id => { $(id).hidden = state.interfaceHidden; });
+    }
+    if (event.key === "Escape" && state.mode === "FOCUS") setMode("TREE", true);
+  });
+
+  async function initGesture() {
+    const button = $("gestureButton");
+    button.disabled = true;
+    $("status").textContent = "正在加载本地手势模型...";
+    try {
+      const { FilesetResolver, GestureRecognizer } = await import("./vendor/mediapipe/vision_bundle.mjs");
+      const vision = await FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
+      const options = delegate => ({
+        baseOptions: { modelAssetPath: "./vendor/mediapipe/gesture_recognizer.task", delegate },
+        runningMode: "VIDEO", numHands: 1
+      });
+      try {
+        state.gestureRecognizer = await GestureRecognizer.createFromOptions(vision, options("GPU"));
+      } catch (error) {
+        state.gestureRecognizer = await GestureRecognizer.createFromOptions(vision, options("CPU"));
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("摄像头 API 不可用");
+      state.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+      });
+      const video = $("webcam");
+      video.srcObject = state.stream;
+      video.hidden = false;
+      await video.play();
+      state.gestureActive = true;
+      button.textContent = "关闭手势";
+      $("status").textContent = "手势控制已开启";
+      showToast("握拳聚拢，张手散开，食指向上聚焦照片");
+      predictGesture();
+    } catch (error) {
+      console.warn("Gesture mode unavailable:", error);
+      $("status").textContent = "手势不可用，已保留鼠标与触控模式";
+      showToast("手势模型或摄像头未启用，仍可用按钮、鼠标和触控控制", 4800);
+      await stopGesture(false);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function stopGesture(showStatus = true) {
+    state.gestureActive = false;
+    if (state.stream) {
+      state.stream.getTracks().forEach(track => track.stop());
+      state.stream = null;
+    }
+    const video = $("webcam");
+    video.pause();
+    video.srcObject = null;
+    video.hidden = true;
+    $("handCursor").hidden = true;
+    $("gestureButton").textContent = "启用手势";
+    if (state.gestureRecognizer && typeof state.gestureRecognizer.close === "function") {
+      try { state.gestureRecognizer.close(); } catch (error) { /* already closed */ }
+    }
+    state.gestureRecognizer = null;
+    if (showStatus) $("status").textContent = "鼠标与触控模式";
+  }
+
+  function predictGesture() {
+    if (!state.gestureActive || !state.gestureRecognizer) return;
+    const video = $("webcam");
+    const now = performance.now();
+    if (video.currentTime !== state.lastVideoTime && video.readyState >= 2) {
+      state.lastVideoTime = video.currentTime;
+      const results = state.gestureRecognizer.recognizeForVideo(video, now);
+      const landmarks = results.landmarks && results.landmarks[0];
+      const cursor = $("handCursor");
+      if (landmarks && landmarks[9]) {
+        const palm = landmarks[9];
+        cursor.hidden = false;
+        cursor.style.left = palm.x * W + "px";
+        cursor.style.top = palm.y * H + "px";
+        state.rotationVelocity = (palm.x - .5) * 1.4;
+      } else {
+        cursor.hidden = true;
+        state.rotationVelocity *= .4;
+      }
+      const gesture = results.gestures && results.gestures[0] && results.gestures[0][0] ? results.gestures[0][0].categoryName : "";
+      if (gesture === state.lastGesture) state.gestureCounter++;
+      else { state.gestureCounter = 0; state.lastGesture = gesture; }
+      const modeMap = { Closed_Fist: "TREE", Open_Palm: "SCATTER", Pointing_Up: "FOCUS" };
+      const mapped = modeMap[gesture];
+      if (mapped && state.gestureCounter >= 4 && mapped !== state.mode && now - state.lastModeTime > 900) {
+        if (mapped === "FOCUS" && state.shownPhotos.length) state.focusIndex = (state.focusIndex + 1) % state.shownPhotos.length;
+        setMode(mapped, true);
+        state.lastModeTime = now;
+      }
+      if (["ILoveYou", "Thumb_Up", "Victory"].includes(gesture) && now - state.lastEffectTime > 2200) {
+        state.lastEffectTime = now;
+        burst(W * (.35 + Math.random() * .3), H * (.35 + Math.random() * .25), gesture === "ILoveYou" ? 110 : 65);
+      }
+      if (gesture) $("status").textContent = "识别到：" + gesture.replaceAll("_", " ");
+    }
+    requestAnimationFrame(predictGesture);
+  }
+
+  $("gestureButton").addEventListener("click", async () => {
+    if (state.gestureActive) await stopGesture();
+    else await initGesture();
+  });
+
+  buildScene();
+  loadPhotos();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

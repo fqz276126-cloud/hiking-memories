@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#f3f1e9" />
+<meta name="description" content="山野足迹：一个由你自己掌控的徒步照片与路线记忆馆。" />
+<title>山野足迹 · 徒步记忆馆</title>
+<style>
+  :root {
+    --paper: #f3f1e9;
+    --paper-deep: #e8e5da;
+    --ink: #17352d;
+    --ink-soft: #36534a;
+    --muted: #748078;
+    --accent: #cf6543;
+    --accent-dark: #ad4d31;
+    --line: rgba(23, 53, 45, .14);
+    --white: #fffef9;
+    --shadow: 0 22px 60px rgba(27, 48, 40, .10);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink); background:
+      radial-gradient(circle at 85% 4%, rgba(207, 101, 67, .09), transparent 28%),
+      radial-gradient(circle at 4% 38%, rgba(62, 105, 85, .08), transparent 25%), var(--paper);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  button, input, textarea, select { font: inherit; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button { color: inherit; }
+  [hidden] { display: none !important; }
+  .shell { width: min(1220px, calc(100% - 48px)); margin: 0 auto; }
+  .site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px 0; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 50%; color: var(--paper); background: var(--ink); }
+  .brand-mark svg { width: 25px; height: 25px; }
+  .brand-name { font-size: 18px; font-weight: 650; letter-spacing: .16em; }
+  .brand-sub { margin-top: 3px; color: var(--muted); font-size: 9px; letter-spacing: .24em; }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 43px; padding: 0 18px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--ink); background: transparent;
+    cursor: pointer; text-decoration: none; font-size: 13px; transition: transform .2s, background .2s, border-color .2s;
+  }
+  .button:hover, .button:focus-visible { transform: translateY(-1px); border-color: rgba(23, 53, 45, .38); outline: none; }
+  .button-primary { border-color: var(--ink); color: var(--paper); background: var(--ink); }
+  .button-primary:hover, .button-primary:focus-visible { background: #254a3f; }
+  .button-accent { border-color: var(--accent); color: white; background: var(--accent); }
+  .button-quiet { background: rgba(255, 254, 249, .55); }
+  .button-small { min-height: 36px; padding: 0 13px; font-size: 12px; }
+  .button-danger { border-color: rgba(165, 54, 43, .24); color: #a5362b; }
+  .icon { width: 17px; height: 17px; flex: none; }
+
+  .hero { display: grid; grid-template-columns: 1.02fr .98fr; gap: clamp(36px, 7vw, 92px); align-items: center; padding: 64px 0 74px; }
+  .eyebrow { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 11px; font-weight: 650; letter-spacing: .24em; }
+  .eyebrow::before { content: ""; width: 28px; height: 1px; background: var(--accent); }
+  .hero h1 { margin: 22px 0 20px; font-family: "Songti SC", "STSong", "SimSun", serif; font-size: clamp(46px, 6vw, 78px); font-weight: 500; line-height: 1.18; letter-spacing: .02em; }
+  .hero-description { max-width: 480px; margin: 0; color: var(--ink-soft); font-size: 15px; line-height: 2; }
+  .hero-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .hero-stats { display: flex; gap: clamp(26px, 4vw, 52px); margin-top: 50px; padding-top: 24px; border-top: 1px solid var(--line); }
+  .stat-value { font-family: Georgia, serif; font-size: 28px; }
+  .stat-label { margin-top: 5px; color: var(--muted); font-size: 11px; letter-spacing: .12em; }
+  .hero-art { position: relative; min-height: 480px; overflow: hidden; border-radius: 180px 180px 22px 22px; background: #173b33; box-shadow: var(--shadow); }
+  .hero-art svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .art-caption { position: absolute; left: 30px; right: 30px; bottom: 27px; display: flex; justify-content: space-between; align-items: end; color: #f4f0df; }
+  .art-title { font-family: Georgia, serif; font-size: 23px; letter-spacing: .05em; }
+  .art-sub { margin-top: 6px; color: rgba(244, 240, 223, .65); font-size: 9px; letter-spacing: .22em; }
+  .art-number { font-family: Georgia, serif; font-size: 42px; font-style: italic; opacity: .8; }
+
+  .archive { padding: 54px 0 80px; border-top: 1px solid var(--line); }
+  .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+  .section-kicker { color: var(--accent); font-size: 10px; letter-spacing: .22em; }
+  .section-heading h2 { margin: 8px 0 0; font-family: "Songti SC", "STSong", serif; font-size: 34px; font-weight: 500; }
+  .view-switch { display: flex; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255, 254, 249, .45); }
+  .view-button { min-height: 34px; padding: 0 15px; border: 0; border-radius: 999px; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; }
+  .view-button.active { color: var(--paper); background: var(--ink); }
+  .toolbar { display: flex; gap: 12px; margin: 28px 0 30px; }
+  .search-wrap { position: relative; flex: 1; }
+  .search-wrap svg { position: absolute; left: 16px; top: 50%; width: 17px; height: 17px; transform: translateY(-50%); color: var(--muted); }
+  .search-input, .year-select {
+    width: 100%; height: 45px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink);
+    background: rgba(255, 254, 249, .68); outline: none;
+  }
+  .search-input { padding: 0 16px 0 44px; }
+  .year-select { width: 140px; padding: 0 12px; }
+  .search-input:focus, .year-select:focus { border-color: rgba(23, 53, 45, .48); }
+  .memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 22px; }
+  .memory-card { overflow: hidden; border: 1px solid rgba(23, 53, 45, .09); border-radius: 18px; background: rgba(255, 254, 249, .72); transition: transform .25s, box-shadow .25s; }
+  .memory-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+  .card-image { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; border: 0; background: #dce2d9; cursor: zoom-in; }
+  .card-image img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; transition: transform .45s; }
+  .memory-card:hover .card-image img { transform: scale(1.025); }
+  .card-index { position: absolute; top: 13px; left: 13px; padding: 5px 9px; border-radius: 999px; color: white; background: rgba(14, 34, 28, .64); backdrop-filter: blur(8px); font-family: Georgia, serif; font-size: 11px; }
+  .card-body { padding: 18px 19px 17px; }
+  .card-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--accent); font-size: 10px; letter-spacing: .08em; }
+  .card-location { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+  .card-title { display: block; margin: 10px 0 0; padding: 0; border: 0; background: none; cursor: pointer; font-family: "Songti SC", "STSong", serif; font-size: 22px; text-align: left; }
+  .card-title:hover { color: var(--accent-dark); }
+  .card-note { display: -webkit-box; min-height: 42px; margin: 10px 0 15px; overflow: hidden; color: var(--ink-soft); font-size: 12px; line-height: 1.75; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .card-footer { display: flex; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+  .empty-state { padding: 70px 24px; border: 1px dashed rgba(23, 53, 45, .22); border-radius: 20px; text-align: center; }
+  .empty-symbol { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%; color: var(--ink); background: var(--paper-deep); }
+  .empty-symbol svg { width: 32px; height: 32px; }
+  .empty-state h3 { margin: 0; font-family: "Songti SC", serif; font-size: 24px; font-weight: 500; }
+  .empty-state p { margin: 10px auto 22px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+
+  .timeline { position: relative; max-width: 850px; margin: 12px auto 0; }
+  .timeline::before { content: ""; position: absolute; left: 116px; top: 10px; bottom: 10px; width: 1px; background: var(--line); }
+  .timeline-item { position: relative; display: grid; grid-template-columns: 94px 1fr; gap: 46px; padding-bottom: 34px; }
+  .timeline-date { padding-top: 19px; color: var(--muted); font-family: Georgia, serif; font-size: 13px; text-align: right; }
+  .timeline-card { position: relative; display: grid; grid-template-columns: 150px 1fr; gap: 20px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 254, 249, .68); }
+  .timeline-card::before { content: ""; position: absolute; left: -28px; top: 25px; width: 9px; height: 9px; border: 3px solid var(--paper); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .timeline-image { width: 150px; height: 120px; padding: 0; border: 0; border-radius: 10px; object-fit: cover; cursor: zoom-in; }
+  .timeline-content h3 { margin: 7px 0; font-family: "Songti SC", serif; font-size: 21px; font-weight: 500; }
+  .timeline-content p { margin: 7px 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .text-button { padding: 0; border: 0; color: var(--accent-dark); background: transparent; cursor: pointer; font-size: 12px; }
+
+  .site-footer { display: flex; justify-content: space-between; gap: 24px; padding: 28px 0 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.8; }
+  .footer-brand { color: var(--ink); letter-spacing: .15em; }
+
+  dialog { color: var(--ink); }
+  dialog::backdrop { background: rgba(10, 26, 21, .72); backdrop-filter: blur(7px); }
+  .dialog-close { position: absolute; top: 16px; right: 16px; z-index: 2; width: 35px; height: 35px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; font-size: 22px; }
+  .form-dialog { width: min(680px, calc(100vw - 30px)); max-height: calc(100vh - 34px); padding: 30px; overflow: auto; border: 1px solid rgba(255, 255, 255, .35); border-radius: 22px; background: var(--paper); }
+  .dialog-heading { margin: 0 0 6px; font-family: "Songti SC", serif; font-size: 29px; font-weight: 500; }
+  .dialog-description { margin: 0 0 24px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field-full { grid-column: 1 / -1; }
+  .field label { font-size: 12px; font-weight: 600; }
+  .field input, .field textarea {
+    width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--white); outline: none;
+  }
+  .field textarea { min-height: 100px; resize: vertical; }
+  .field input:focus, .field textarea:focus { border-color: var(--ink-soft); }
+  .upload-zone { padding: 22px; border: 1px dashed rgba(23, 53, 45, .3); border-radius: 12px; background: rgba(255, 254, 249, .48); cursor: pointer; text-align: center; }
+  .upload-zone.dragging { border-color: var(--accent); background: rgba(207, 101, 67, .07); }
+  .upload-zone strong { display: block; margin-bottom: 6px; font-size: 13px; }
+  .upload-zone span { color: var(--muted); font-size: 11px; }
+  .upload-previews { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; }
+  .upload-previews img { width: 70px; height: 70px; flex: none; border-radius: 8px; object-fit: cover; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+  .backup-actions { display: grid; gap: 12px; margin-top: 22px; }
+  .backup-action { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); cursor: pointer; text-align: left; }
+  .backup-action strong { display: block; margin-bottom: 5px; }
+  .backup-action span { color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+  .lightbox { width: min(1180px, calc(100vw - 28px)); max-width: none; max-height: calc(100vh - 28px); padding: 0; overflow: hidden; border: 0; border-radius: 20px; background: #f6f3eb; }
+  .lightbox .dialog-close { color: white; border-color: rgba(255, 255, 255, .35); background: rgba(10, 25, 20, .4); }
+  .lightbox-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .7fr); min-height: min(720px, calc(100vh - 28px)); }
+  .lightbox-media { position: relative; display: grid; place-items: center; min-height: 460px; background: #10251f; }
+  .lightbox-media img { display: block; width: 100%; height: 100%; max-height: calc(100vh - 28px); object-fit: contain; }
+  .lightbox-nav { position: absolute; top: 50%; width: 42px; height: 42px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 50%; color: white; background: rgba(10, 25, 20, .48); cursor: pointer; transform: translateY(-50%); }
+  .lightbox-prev { left: 16px; }
+  .lightbox-next { right: 16px; }
+  .lightbox-info { padding: 54px 28px 28px; overflow-y: auto; }
+  .lightbox-date { color: var(--accent); font-size: 11px; letter-spacing: .1em; }
+  .lightbox-info h2 { margin: 12px 0; font-family: "Songti SC", serif; font-size: 32px; font-weight: 500; line-height: 1.3; }
+  .lightbox-location { color: var(--ink-soft); font-size: 13px; }
+  .lightbox-note { margin: 25px 0; color: var(--ink-soft); font-size: 13px; line-height: 2; white-space: pre-wrap; }
+  .lightbox-distance { padding: 13px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .lightbox-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
+  .lightbox-count { margin-top: 20px; color: var(--muted); font-family: Georgia, serif; font-size: 12px; }
+  .toast { position: fixed; z-index: 100; left: 50%; bottom: 28px; max-width: calc(100vw - 32px); transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; color: #f8f4e8; background: #17352d; box-shadow: 0 15px 50px rgba(0, 0, 0, .2); font-size: 12px; text-align: center; }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; padding-top: 40px; }
+    .hero-copy { max-width: 680px; }
+    .hero-art { min-height: 420px; border-radius: 140px 140px 20px 20px; }
+    .memory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lightbox-layout { grid-template-columns: 1fr; overflow-y: auto; }
+    .lightbox-media { min-height: 50vh; }
+    .lightbox-media img { max-height: 62vh; }
+    .lightbox-info { padding: 30px 24px; }
+  }
+  @media (max-width: 620px) {
+    .shell { width: min(100% - 30px, 1220px); }
+    .site-header { align-items: flex-start; padding: 18px 0; }
+    .brand-sub, .header-backup { display: none; }
+    .brand-name { font-size: 16px; }
+    .brand-mark { width: 38px; height: 38px; }
+    .header-actions .button { min-height: 38px; padding: 0 13px; font-size: 11px; }
+    .hero { gap: 36px; padding: 38px 0 48px; }
+    .hero h1 { font-size: 47px; }
+    .hero-description { font-size: 14px; }
+    .hero-stats { justify-content: space-between; gap: 12px; margin-top: 36px; }
+    .stat-value { font-size: 25px; }
+    .hero-art { min-height: 360px; }
+    .section-heading { align-items: flex-start; flex-direction: column; }
+    .toolbar { flex-wrap: wrap; }
+    .search-wrap { flex-basis: 100%; }
+    .year-select { flex: 1; }
+    .memory-grid { grid-template-columns: 1fr; gap: 20px; }
+    .timeline::before { left: 10px; }
+    .timeline-item { grid-template-columns: 1fr; gap: 10px; padding-left: 29px; }
+    .timeline-date { padding-top: 0; text-align: left; }
+    .timeline-card { grid-template-columns: 100px 1fr; gap: 13px; }
+    .timeline-card::before { left: -24px; top: 19px; }
+    .timeline-image { width: 100px; height: 110px; }
+    .form-dialog { padding: 25px 19px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .field-full { grid-column: auto; }
+    .site-footer { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<header class="shell site-header">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none"><path d="M3 25 12 9l4 7 4-5 9 14H3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9 25 7-9 5 9" stroke="currentColor" stroke-width="1.3"/></svg>
+    </div>
+    <div><div class="brand-name">山野足迹</div><div class="brand-sub">TRAIL MEMORIES</div></div>
+  </div>
+  <div class="header-actions">
+    <button class="button button-quiet header-backup" id="backupButton" type="button">备份与恢复</button>
+    <button class="button button-primary js-add" type="button">记录一次徒步</button>
+  </div>
+</header>
+
+<main>
+  <section class="shell hero">
+    <div class="hero-copy">
+      <div class="eyebrow">MY HIKING ARCHIVE</div>
+      <h1>把走过的山，<br />留在时间里。</h1>
+      <p class="hero-description">收藏沿途的风景、路线和心情。这不是一个交给平台托管的相册，而是一份由你自己保存、随时可以带走的徒步记忆。</p>
+      <div class="hero-buttons">
+        <button class="button button-accent js-add" type="button">添加第一段回忆</button>
+        <a class="button" href="#archive">看看照片墙</a>
+        <a class="button" href="tree.html">进入粒子回忆树</a>
+      </div>
+      <div class="hero-stats" aria-label="徒步回忆统计">
+        <div><div class="stat-value" id="tripStat">0</div><div class="stat-label">段旅程</div></div>
+        <div><div class="stat-value" id="photoStat">0</div><div class="stat-label">张照片</div></div>
+        <div><div class="stat-value" id="placeStat">0</div><div class="stat-label">个地点</div></div>
+      </div>
+    </div>
+    <div class="hero-art" aria-label="抽象山野插画">
+      <svg viewBox="0 0 620 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <rect width="620" height="520" fill="#173b33"/>
+        <g fill="none" stroke="#789181" stroke-width="1" opacity=".22">
+          <path d="M-40 100C80 20 160 160 300 75s270-20 370 45"/><path d="M-50 135C90 48 170 192 315 105s260-12 360 40"/>
+          <path d="M-40 170C80 90 190 220 330 140s230-15 350 30"/><path d="M-20 205C105 125 205 250 345 175s230-5 330 35"/>
+          <path d="M-50 390c140-100 230 80 390-10s240-40 340 25"/><path d="M-40 425c150-100 235 75 400-15s235-35 330 30"/>
+        </g>
+        <circle cx="440" cy="135" r="55" fill="#d87550" opacity=".92"/>
+        <path d="M0 410 175 180l92 110 80-105 200 225H0Z" fill="#315b4c"/>
+        <path d="m85 410 182-230 112 128 67-75 174 177H85Z" fill="#23483c"/>
+        <path d="m175 180 36 43-28-8-18 18-20-12-27 17 57-58Z" fill="#e8e5d7" opacity=".9"/>
+        <path d="m267 180 43 52-29-11-19 18-18-13-24 11 47-57Z" fill="#e8e5d7" opacity=".82"/>
+        <path d="M0 430c145-35 215 38 350 0s205-15 270 5v85H0Z" fill="#122f28"/>
+      </svg>
+      <div class="art-caption"><div><div class="art-title">Into the wild</div><div class="art-sub">EVERY STEP TELLS A STORY</div></div><div class="art-number">01</div></div>
+    </div>
+  </section>
+
+  <section class="shell archive" id="archive">
+    <div class="section-heading">
+      <div><div class="section-kicker">YOUR JOURNEYS</div><h2>徒步回忆</h2></div>
+      <div class="view-switch" aria-label="展示方式">
+        <button class="view-button active" data-view="grid" type="button">照片墙</button>
+        <button class="view-button" data-view="timeline" type="button">时间线</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.7"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.7"/></svg>
+        <input class="search-input" id="searchInput" type="search" placeholder="搜索地点、标题或一段回忆" aria-label="搜索徒步回忆" />
+      </div>
+      <select class="year-select" id="yearSelect" aria-label="按年份筛选"><option value="all">全部年份</option></select>
+    </div>
+    <div class="memory-grid" id="memoryGrid"></div>
+    <div class="timeline" id="timeline" hidden></div>
+    <div class="empty-state" id="emptyState">
+      <div class="empty-symbol"><svg viewBox="0 0 32 32" fill="none"><path d="M3 25 12 9l4 7 4-5 9 14H3Z" stroke="currentColor" stroke-width="1.5"/><path d="M16 4v4M4 10l3 2M28 10l-3 2" stroke="currentColor" stroke-width="1.5"/></svg></div>
+      <h3 id="emptyTitle">第一段回忆，正在等你</h3>
+      <p id="emptyDescription">加入一张徒步照片，写下地点、日期和当时的心情。</p>
+      <button class="button button-primary js-add" type="button">现在添加</button>
+    </div>
+  </section>
+</main>
+
+<footer class="shell site-footer">
+  <div><span class="footer-brand">山野足迹</span> · 山高路远，步步值得。</div>
+  <div>本地保存 · 支持 GitHub Pages · <button class="text-button" id="footerBackup" type="button">备份与恢复</button></div>
+</footer>
+
+<dialog class="form-dialog" id="editorDialog">
+  <button class="dialog-close" id="closeEditor" type="button" aria-label="关闭">×</button>
+  <h2 class="dialog-heading" id="editorTitle">记录一次徒步</h2>
+  <p class="dialog-description" id="editorDescription">可以一次添加多张照片，它们会共享同一段路线信息。</p>
+  <form id="editorForm">
+    <div class="field field-full" id="fileSection" style="margin-bottom: 18px;">
+      <button class="upload-zone" id="uploadZone" type="button">
+        <strong>选择徒步照片，或拖到这里</strong>
+        <span>支持 JPG、PNG、WebP、GIF、AVIF，可多选</span>
+      </button>
+      <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden />
+      <div class="upload-previews" id="uploadPreviews"></div>
+    </div>
+    <div class="form-grid">
+      <div class="field field-full"><label for="titleInput">这段旅程叫什么</label><input id="titleInput" required maxlength="80" placeholder="例如：武功山两日徒步" /></div>
+      <div class="field"><label for="locationInput">徒步地点</label><input id="locationInput" maxlength="80" placeholder="例如：江西 · 萍乡" /></div>
+      <div class="field"><label for="dateInput">徒步日期</label><input id="dateInput" type="date" /></div>
+      <div class="field field-full"><label for="distanceInput">路线或距离（选填）</label><input id="distanceInput" maxlength="100" placeholder="例如：龙山村反穿 · 约 24 km" /></div>
+      <div class="field field-full"><label for="noteInput">当时的心情</label><textarea id="noteInput" maxlength="1200" placeholder="记录天气、同行的人、路上发生的故事……"></textarea></div>
+    </div>
+    <div class="form-actions"><button class="button" id="cancelEditor" type="button">取消</button><button class="button button-primary" id="saveMemory" type="submit">保存回忆</button></div>
+  </form>
+</dialog>
+
+<dialog class="form-dialog" id="backupDialog">
+  <button class="dialog-close" id="closeBackup" type="button" aria-label="关闭">×</button>
+  <h2 class="dialog-heading">你的回忆，由你保管</h2>
+  <p class="dialog-description">本机添加的照片和文字保存在当前浏览器。导出备份后，可以在其他浏览器或电脑上恢复。仓库中的公开照片已经随代码保存，不需要重复备份。</p>
+  <div class="backup-actions">
+    <button class="backup-action" id="exportBackup" type="button"><strong>导出本机回忆备份</strong><span>生成一个包含照片和文字的 JSON 文件，请妥善保存。</span></button>
+    <button class="backup-action" id="importBackup" type="button"><strong>从备份恢复</strong><span>导入之前导出的备份文件，原有回忆不会被覆盖。</span></button>
+    <input id="backupInput" type="file" accept="application/json,.json" hidden />
+  </div>
+</dialog>
+
+<dialog class="lightbox" id="lightbox">
+  <button class="dialog-close" id="closeLightbox" type="button" aria-label="关闭大图">×</button>
+  <div class="lightbox-layout">
+    <div class="lightbox-media">
+      <img id="lightboxImage" alt="徒步照片大图" />
+      <button class="lightbox-nav lightbox-prev" id="previousPhoto" type="button" aria-label="上一张">←</button>
+      <button class="lightbox-nav lightbox-next" id="nextPhoto" type="button" aria-label="下一张">→</button>
+    </div>
+    <div class="lightbox-info">
+      <div class="lightbox-date" id="lightboxDate"></div>
+      <h2 id="lightboxTitle"></h2>
+      <div class="lightbox-location" id="lightboxLocation"></div>
+      <p class="lightbox-note" id="lightboxNote"></p>
+      <div class="lightbox-distance" id="lightboxDistance"></div>
+      <div class="lightbox-actions">
+        <a class="button button-small" id="downloadPhoto" download>下载照片</a>
+        <button class="button button-small" id="editMemory" type="button">编辑信息</button>
+        <button class="button button-small button-danger" id="deleteMemory" type="button">删除</button>
+      </div>
+      <div class="lightbox-count" id="lightboxCount"></div>
+    </div>
+  </div>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+  const state = {
+    memories: [], view: "grid", editingId: null, pendingFiles: [], previewUrls: [],
+    dbPromise: null, lightboxList: [], lightboxIndex: 0, toastTimer: null
+  };
+  const objectUrls = [];
+
+  function showToast(message, duration = 3200) {
+    clearTimeout(state.toastTimer);
+    $("toast").textContent = message;
+    $("toast").hidden = false;
+    state.toastTimer = setTimeout(() => { $("toast").hidden = true; }, duration);
+  }
+
+  function openDialog(dialog) {
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closeDialog(dialog) {
+    if (dialog.open) dialog.close();
+  }
+
+  function openDB() {
+    if (state.dbPromise) return state.dbPromise;
+    state.dbPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error("当前浏览器不支持本地照片数据库"));
+      const request = indexedDB.open("hiking-memories-v1", 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("memories")) db.createObjectStore("memories", { keyPath: "id" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error("数据库被其他页面占用"));
+    });
+    return state.dbPromise;
+  }
+
+  async function withStore(mode, operation) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("memories", mode);
+      const request = operation(transaction.objectStore("memories"));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      transaction.onabort = () => reject(transaction.error || new Error("本地存储事务失败"));
+    });
+  }
+
+  function uid() {
+    return window.crypto && crypto.randomUUID ? crypto.randomUUID() : `memory-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function customMemory(record) {
+    const src = URL.createObjectURL(record.blob);
+    objectUrls.push(src);
+    return { ...record, src, custom: true, temporary: false };
+  }
+
+  async function preparePhoto(file) {
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type)) throw new Error("不支持的照片格式");
+    if (file.type === "image/gif" || file.size < 2500000 || !window.createImageBitmap) return file;
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size < 6000000) { bitmap.close(); return file; }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      const outputType = file.type === "image/png" ? "image/webp" : "image/jpeg";
+      if (outputType === "image/jpeg") { context.fillStyle = "#f3f1e9"; context.fillRect(0, 0, canvas.width, canvas.height); }
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, .9));
+      return blob || file;
+    } catch (error) {
+      return file;
+    }
+  }
+
+  async function loadBundledMemories() {
+    try {
+      const response = await fetch("photos.json", { cache: "no-store" });
+      if (!response.ok) return [];
+      const entries = await response.json();
+      if (!Array.isArray(entries)) return [];
+      return entries.map((entry, index) => {
+        if (!entry) return null;
+        const raw = typeof entry === "string" ? entry : entry.src || entry.file;
+        if (!raw) return null;
+        let src = raw;
+        if (!/^(https?:|data:|blob:|\/)/i.test(src) && !src.startsWith("photos/")) src = `photos/${src}`;
+        return {
+          id: `bundled-${index}`, src, custom: false,
+          title: entry.title || "山野回忆",
+          location: entry.location || "",
+          date: entry.date || "",
+          distance: entry.distance || "",
+          note: entry.note || "",
+          createdAt: index
+        };
+      }).filter(Boolean);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async function loadCustomMemories() {
+    try {
+      const records = await withStore("readonly", store => store.getAll());
+      return records.map(customMemory);
+    } catch (error) {
+      showToast("本地存储暂不可用，请先检查浏览器设置", 4800);
+      return [];
+    }
+  }
+
+  function sortedMemories(items) {
+    return [...items].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+  }
+
+  function filteredMemories() {
+    const query = $("searchInput").value.trim().toLowerCase();
+    const year = $("yearSelect").value;
+    return sortedMemories(state.memories).filter(memory => {
+      const matchesYear = year === "all" || (memory.date || "").startsWith(year);
+      const haystack = [memory.title, memory.location, memory.note, memory.distance].join(" ").toLowerCase();
+      return matchesYear && (!query || haystack.includes(query));
+    });
+  }
+
+  function formatDate(date, short = false) {
+    if (!date) return "日期待补充";
+    const parts = date.split("-");
+    return short ? `${parts[1]}.${parts[2]}` : `${parts[0]} 年 ${Number(parts[1])} 月 ${Number(parts[2])} 日`;
+  }
+
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function updateStats() {
+    $("photoStat").textContent = state.memories.length;
+    $("placeStat").textContent = new Set(state.memories.map(item => item.location.trim()).filter(Boolean)).size;
+    $("tripStat").textContent = new Set(state.memories.map(item => [item.title, item.date, item.location].join("|"))).size;
+    const current = $("yearSelect").value;
+    const years = [...new Set(state.memories.map(item => (item.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+    $("yearSelect").innerHTML = '<option value="all">全部年份</option>' + years.map(year => `<option value="${year}">${year} 年</option>`).join("");
+    $("yearSelect").value = years.includes(current) ? current : "all";
+  }
+
+  function openLightbox(id) {
+    state.lightboxList = filteredMemories();
+    state.lightboxIndex = state.lightboxList.findIndex(item => item.id === id);
+    if (state.lightboxIndex < 0) return;
+    renderLightbox();
+    openDialog($("lightbox"));
+  }
+
+  function renderGrid(items) {
+    const grid = $("memoryGrid");
+    grid.textContent = "";
+    items.forEach((memory, index) => {
+      const card = element("article", "memory-card");
+      const imageButton = element("button", "card-image");
+      imageButton.type = "button";
+      imageButton.setAttribute("aria-label", `查看 ${memory.title}`);
+      const image = element("img");
+      image.src = memory.src;
+      image.alt = memory.title;
+      image.loading = "lazy";
+      imageButton.append(image, element("span", "card-index", String(index + 1).padStart(2, "0")));
+      imageButton.addEventListener("click", () => openLightbox(memory.id));
+      const body = element("div", "card-body");
+      const meta = element("div", "card-meta");
+      meta.append(element("span", "", formatDate(memory.date)), element("span", "card-location", memory.location || "山野之间"));
+      const title = element("button", "card-title", memory.title);
+      title.type = "button";
+      title.addEventListener("click", () => openLightbox(memory.id));
+      const footer = element("div", "card-footer");
+      footer.append(element("span", "", memory.distance || "慢慢走，也值得"), element("span", "", memory.custom ? "本机回忆" : "公开回忆"));
+      body.append(meta, title, element("p", "card-note", memory.note || "那天的山风和脚步，都留在这里。"), footer);
+      card.append(imageButton, body);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderTimeline(items) {
+    const timeline = $("timeline");
+    timeline.textContent = "";
+    items.forEach(memory => {
+      const item = element("article", "timeline-item");
+      item.appendChild(element("div", "timeline-date", formatDate(memory.date, true)));
+      const card = element("div", "timeline-card");
+      const image = element("img", "timeline-image");
+      image.src = memory.src;
+      image.alt = memory.title;
+      image.addEventListener("click", () => openLightbox(memory.id));
+      const content = element("div", "timeline-content");
+      content.append(element("div", "section-kicker", memory.location || "山野之间"), element("h3", "", memory.title), element("p", "", memory.note || memory.distance || "一段值得记住的徒步时光。"));
+      const button = element("button", "text-button", "翻开这段回忆 →");
+      button.type = "button";
+      button.addEventListener("click", () => openLightbox(memory.id));
+      content.appendChild(button);
+      card.append(image, content);
+      item.appendChild(card);
+      timeline.appendChild(item);
+    });
+  }
+
+  function render() {
+    updateStats();
+    const items = filteredMemories();
+    const empty = items.length === 0;
+    $("emptyState").hidden = !empty;
+    $("memoryGrid").hidden = empty || state.view !== "grid";
+    $("timeline").hidden = empty || state.view !== "timeline";
+    if (!state.memories.length) {
+      $("emptyTitle").textContent = "第一段回忆，正在等你";
+      $("emptyDescription").textContent = "加入一张徒步照片，写下地点、日期和当时的心情。";
+      $("emptyState").querySelector("button").hidden = false;
+    } else if (empty) {
+      $("emptyTitle").textContent = "没有找到匹配的回忆";
+      $("emptyDescription").textContent = "换一个关键词或年份试试。";
+      $("emptyState").querySelector("button").hidden = true;
+    }
+    renderGrid(items);
+    renderTimeline(items);
+  }
+
+  function setView(view) {
+    state.view = view;
+    document.querySelectorAll(".view-button").forEach(button => button.classList.toggle("active", button.dataset.view === view));
+    render();
+  }
+
+  function clearPendingFiles() {
+    state.pendingFiles = [];
+    state.previewUrls.forEach(url => URL.revokeObjectURL(url));
+    state.previewUrls = [];
+    $("photoInput").value = "";
+    $("uploadPreviews").textContent = "";
+  }
+
+  function setPendingFiles(files) {
+    const selectedFiles = Array.from(files || []);
+    clearPendingFiles();
+    state.pendingFiles = selectedFiles.filter(file => /^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type));
+    state.pendingFiles.forEach(file => {
+      const url = URL.createObjectURL(file);
+      state.previewUrls.push(url);
+      const image = element("img");
+      image.src = url;
+      image.alt = file.name;
+      $("uploadPreviews").appendChild(image);
+    });
+    if (!state.pendingFiles.length && files && files.length) showToast("请选择支持的图片格式");
+  }
+
+  function openEditor(memory = null) {
+    state.editingId = memory ? memory.id : null;
+    clearPendingFiles();
+    $("editorForm").reset();
+    $("fileSection").hidden = Boolean(memory);
+    $("editorTitle").textContent = memory ? "编辑徒步信息" : "记录一次徒步";
+    $("editorDescription").textContent = memory ? "修改标题、地点和文字，照片本身不会改变。" : "可以一次添加多张照片，它们会共享同一段路线信息。";
+    $("saveMemory").textContent = memory ? "保存修改" : "保存回忆";
+    $("titleInput").value = memory ? memory.title : "";
+    $("locationInput").value = memory ? memory.location : "";
+    $("dateInput").value = memory ? memory.date : new Date().toISOString().slice(0, 10);
+    $("distanceInput").value = memory ? memory.distance : "";
+    $("noteInput").value = memory ? memory.note : "";
+    openDialog($("editorDialog"));
+  }
+
+  async function saveEditor(event) {
+    event.preventDefault();
+    const metadata = {
+      title: $("titleInput").value.trim(), location: $("locationInput").value.trim(),
+      date: $("dateInput").value, distance: $("distanceInput").value.trim(), note: $("noteInput").value.trim()
+    };
+    if (!metadata.title) return;
+    $("saveMemory").disabled = true;
+
+    try {
+      if (state.editingId) {
+        const memory = state.memories.find(item => item.id === state.editingId);
+        if (!memory || !memory.custom) return;
+        const record = { id: memory.id, ...metadata, blob: memory.blob, createdAt: memory.createdAt };
+        try { await withStore("readwrite", store => store.put(record)); } catch (error) { showToast("信息已更新，但无法写入本地数据库"); }
+        Object.assign(memory, metadata);
+        closeDialog($("editorDialog"));
+        closeDialog($("lightbox"));
+        render();
+        showToast("徒步信息已更新");
+        return;
+      }
+
+      if (!state.pendingFiles.length) {
+        showToast("请先选择至少一张徒步照片");
+        return;
+      }
+      $("saveMemory").textContent = "正在保存...";
+      let added = 0;
+      for (let index = 0; index < state.pendingFiles.length; index++) {
+        const file = state.pendingFiles[index];
+        const blob = await preparePhoto(file);
+        const record = { id: uid(), ...metadata, blob, createdAt: Date.now() + index, fileName: file.name };
+        await withStore("readwrite", store => store.put(record));
+        state.memories.push(customMemory(record));
+        added++;
+        $("saveMemory").textContent = `正在保存 ${index + 1} / ${state.pendingFiles.length}`;
+      }
+      closeDialog($("editorDialog"));
+      clearPendingFiles();
+      render();
+      showToast(`已保存 ${added} 张照片和这段徒步回忆`);
+      setTimeout(() => $("archive").scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    } catch (error) {
+      showToast("保存失败：可能是浏览器存储空间不足，请压缩照片或清理空间后重试", 5200);
+    } finally {
+      $("saveMemory").disabled = false;
+      $("saveMemory").textContent = state.editingId ? "保存修改" : "保存回忆";
+    }
+  }
+
+  function renderLightbox() {
+    const memory = state.lightboxList[state.lightboxIndex];
+    if (!memory) return;
+    $("lightboxImage").src = memory.src;
+    $("lightboxImage").alt = memory.title;
+    $("lightboxDate").textContent = formatDate(memory.date);
+    $("lightboxTitle").textContent = memory.title;
+    $("lightboxLocation").textContent = memory.location || "山野之间";
+    $("lightboxNote").textContent = memory.note || "那天的山风和脚步，都留在这里。";
+    $("lightboxDistance").textContent = memory.distance || "路线与距离未记录";
+    $("lightboxCount").textContent = `${state.lightboxIndex + 1} / ${state.lightboxList.length}`;
+    $("downloadPhoto").href = memory.src;
+    const extension = memory.blob && memory.blob.type === "image/png" ? "png" : memory.blob && memory.blob.type === "image/webp" ? "webp" : "jpg";
+    $("downloadPhoto").download = `${memory.title.replace(/[\\/:*?"<>|]/g, "-")}.${extension}`;
+    $("editMemory").hidden = !memory.custom;
+    $("deleteMemory").hidden = !memory.custom;
+    const multiple = state.lightboxList.length > 1;
+    $("previousPhoto").hidden = !multiple;
+    $("nextPhoto").hidden = !multiple;
+  }
+
+  function moveLightbox(step) {
+    if (!state.lightboxList.length) return;
+    state.lightboxIndex = (state.lightboxIndex + step + state.lightboxList.length) % state.lightboxList.length;
+    renderLightbox();
+  }
+
+  async function deleteCurrentMemory() {
+    const memory = state.lightboxList[state.lightboxIndex];
+    if (!memory || !memory.custom) return;
+    if (!window.confirm("确定删除这段本机回忆吗？原始照片文件不会被删除，此操作可通过之前的备份恢复。")) return;
+    try { await withStore("readwrite", store => store.delete(memory.id)); } catch (error) { showToast("删除失败，请稍后重试"); return; }
+    state.memories = state.memories.filter(item => item.id !== memory.id);
+    URL.revokeObjectURL(memory.src);
+    closeDialog($("lightbox"));
+    render();
+    showToast("这段本机回忆已删除");
+  }
+
+  function blobToDataURL(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function exportBackup() {
+    const custom = state.memories.filter(memory => memory.custom);
+    if (!custom.length) { showToast("还没有需要备份的本机回忆"); return; }
+    $("exportBackup").disabled = true;
+    try {
+      const memories = [];
+      for (const memory of custom) {
+        memories.push({
+          id: memory.id, title: memory.title, location: memory.location, date: memory.date,
+          distance: memory.distance, note: memory.note, createdAt: memory.createdAt,
+          fileName: memory.fileName || "徒步照片", data: await blobToDataURL(memory.blob)
+        });
+      }
+      const payload = JSON.stringify({ app: "hiking-memories", version: 1, exportedAt: new Date().toISOString(), memories });
+      const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `山野足迹-备份-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`已导出 ${custom.length} 条本机回忆`);
+    } catch (error) {
+      showToast("备份失败，请稍后重试");
+    } finally {
+      $("exportBackup").disabled = false;
+    }
+  }
+
+  async function importBackup(file) {
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload.app !== "hiking-memories" || !Array.isArray(payload.memories)) throw new Error("备份格式不正确");
+      let restored = 0;
+      for (const item of payload.memories) {
+        if (!item.data || !item.title) continue;
+        const response = await fetch(item.data);
+        const blob = await response.blob();
+        const id = state.memories.some(memory => memory.id === item.id) ? uid() : item.id || uid();
+        const record = {
+          id, title: item.title, location: item.location || "", date: item.date || "",
+          distance: item.distance || "", note: item.note || "", createdAt: item.createdAt || Date.now(),
+          fileName: item.fileName || "徒步照片", blob
+        };
+        await withStore("readwrite", store => store.put(record));
+        state.memories.push(customMemory(record));
+        restored++;
+      }
+      closeDialog($("backupDialog"));
+      render();
+      showToast(`已恢复 ${restored} 条回忆，原有内容未被覆盖`);
+    } catch (error) {
+      showToast("无法恢复：请选择由本站导出的有效备份文件", 4800);
+    }
+  }
+
+  document.querySelectorAll(".js-add").forEach(button => button.addEventListener("click", () => openEditor()));
+  document.querySelectorAll(".view-button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+  $("searchInput").addEventListener("input", render);
+  $("yearSelect").addEventListener("change", render);
+  $("editorForm").addEventListener("submit", saveEditor);
+  $("closeEditor").addEventListener("click", () => closeDialog($("editorDialog")));
+  $("cancelEditor").addEventListener("click", () => closeDialog($("editorDialog")));
+  $("uploadZone").addEventListener("click", () => $("photoInput").click());
+  $("photoInput").addEventListener("change", event => setPendingFiles(event.target.files));
+  ["dragenter", "dragover"].forEach(name => $("uploadZone").addEventListener(name, event => { event.preventDefault(); $("uploadZone").classList.add("dragging"); }));
+  ["dragleave", "drop"].forEach(name => $("uploadZone").addEventListener(name, event => { event.preventDefault(); $("uploadZone").classList.remove("dragging"); }));
+  $("uploadZone").addEventListener("drop", event => setPendingFiles(event.dataTransfer.files));
+  $("closeLightbox").addEventListener("click", () => closeDialog($("lightbox")));
+  $("previousPhoto").addEventListener("click", () => moveLightbox(-1));
+  $("nextPhoto").addEventListener("click", () => moveLightbox(1));
+  $("deleteMemory").addEventListener("click", deleteCurrentMemory);
+  $("editMemory").addEventListener("click", () => openEditor(state.lightboxList[state.lightboxIndex]));
+  $("backupButton").addEventListener("click", () => openDialog($("backupDialog")));
+  $("footerBackup").addEventListener("click", () => openDialog($("backupDialog")));
+  $("closeBackup").addEventListener("click", () => closeDialog($("backupDialog")));
+  $("exportBackup").addEventListener("click", exportBackup);
+  $("importBackup").addEventListener("click", () => $("backupInput").click());
+  $("backupInput").addEventListener("change", event => { importBackup(event.target.files[0]); event.target.value = ""; });
+  document.addEventListener("keydown", event => {
+    if (!$("lightbox").open) return;
+    if (event.key === "ArrowLeft") moveLightbox(-1);
+    if (event.key === "ArrowRight") moveLightbox(1);
+  });
+
+  Promise.all([loadBundledMemories(), loadCustomMemories()]).then(results => {
+    state.memories = results[0].concat(results[1]);
+    render();
+  });
+})();
+</script>
+</body>
+</html>

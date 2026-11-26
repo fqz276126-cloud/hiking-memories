@@ -1,0 +1,20 @@
+Bundled third-party assets
+==========================
+
+This folder contains unmodified MediaPipe Tasks Vision runtime files and the
+MediaPipe gesture recognizer model, used only for optional camera gesture
+control. MediaPipe is distributed under the Apache License 2.0; the full
+license text is included as LICENSE-2.0.txt.
+
+Files:
+- vision_bundle.mjs
+- wasm/vision_wasm_internal.js
+- wasm/vision_wasm_internal.wasm
+- wasm/vision_wasm_nosimd_internal.js
+- wasm/vision_wasm_nosimd_internal.wasm
+- gesture_recognizer.task
+
+All files are served locally from this repository. No camera frames are sent
+to a server; recognition runs in the browser. The camera is activated only
+after the visitor chooses "启用手势". If the model or camera is unavailable,
+the particle memory tree remains fully usable with buttons, mouse and touch.
