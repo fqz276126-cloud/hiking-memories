@@ -110,6 +110,7 @@
 <video class="camera-preview" id="webcam" autoplay playsinline muted hidden></video>
 <div class="hand-cursor" id="handCursor" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<audio id="bgm" src="music/episode33.mp3" loop preload="auto"></audio>
 
 <script>
 (() => {
@@ -720,116 +721,31 @@
     requestAnimationFrame(predictGesture);
   }
 
-  // ---------- 原创氛围音乐（Web Audio 实时生成，无需外部音频文件） ----------
-  const music = { ctx: null, playing: false, padTimer: null, bellTimer: null, master: null, send: null };
-  const musicChords = [
-    [220.00, 261.63, 329.63],
-    [174.61, 220.00, 261.63],
-    [196.00, 246.94, 293.66],
-    [261.63, 329.63, 392.00]
-  ];
-  const musicNotes = [440, 493.88, 523.25, 587.33, 659.25, 783.99, 880];
-
-  function musicPad(ctx, freqs) {
-    const t = ctx.currentTime;
-    freqs.forEach(f => {
-      [0, 1].forEach(k => {
-        const osc = ctx.createOscillator();
-        osc.type = k ? "sine" : "triangle";
-        osc.frequency.value = f * (k ? 1.004 : 1);
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(k ? .028 : .042, t + 3.6);
-        gain.gain.linearRampToValueAtTime(.0001, t + 9.2);
-        osc.connect(gain);
-        gain.connect(music.master);
-        osc.start(t);
-        osc.stop(t + 9.4);
-      });
-    });
-  }
-
-  function musicBell(ctx) {
-    if (!music.playing) return;
-    const f = musicNotes[Math.floor(Math.random() * musicNotes.length)];
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = f;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(.11, t + .02);
-    gain.gain.exponentialRampToValueAtTime(.0001, t + 2.6);
-    osc.connect(gain);
-    gain.connect(music.master);
-    gain.connect(music.send);
-    osc.start(t);
-    osc.stop(t + 2.8);
-    music.bellTimer = setTimeout(() => musicBell(ctx), 900 + Math.random() * 1700);
-  }
-
-  async function startMusic() {
-    if (music.playing) return;
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) { showToast("当前浏览器不支持音频播放"); return; }
+  // ---------- 背景音乐（Episode 33 · 本地文件循环播放） ----------
+  const bgm = $("bgm");
+  bgm.volume = .6;
+  bgm.addEventListener("play", () => {
+    $("musicButton").textContent = "暂停音乐";
+    $("musicButton").classList.add("active");
+  });
+  bgm.addEventListener("pause", () => {
+    $("musicButton").textContent = "播放音乐";
+    $("musicButton").classList.remove("active");
+  });
+  bgm.addEventListener("error", () => showToast("音乐文件加载失败，请确认 music/episode33.mp3 存在", 5000));
+  $("musicButton").addEventListener("click", async () => {
     try {
-      if (!music.ctx) {
-        const ctx = new AudioContext();
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.value = 2400;
-        const master = ctx.createGain();
-        master.gain.value = .5;
-        const delay = ctx.createDelay(1);
-        delay.delayTime.value = .42;
-        const feedback = ctx.createGain();
-        feedback.gain.value = .32;
-        const send = ctx.createGain();
-        send.gain.value = .55;
-        master.connect(filter);
-        filter.connect(ctx.destination);
-        send.connect(delay);
-        delay.connect(feedback);
-        feedback.connect(delay);
-        delay.connect(master);
-        music.ctx = ctx;
-        music.master = master;
-        music.send = send;
-      }
-      if (music.ctx.state === "suspended") await music.ctx.resume();
-      music.playing = true;
-      let chordIndex = 0;
-      musicPad(music.ctx, musicChords[0]);
-      music.padTimer = setInterval(() => {
-        chordIndex = (chordIndex + 1) % musicChords.length;
-        musicPad(music.ctx, musicChords[chordIndex]);
-      }, 8000);
-      music.bellTimer = setTimeout(() => musicBell(music.ctx), 1300);
-      $("musicButton").textContent = "暂停音乐";
-      $("musicButton").classList.add("active");
-      showToast("背景音乐已开启 · 原创氛围纯音乐");
+      if (bgm.paused) { await bgm.play(); showToast("背景音乐：Episode 33 · 循环播放"); }
+      else bgm.pause();
     } catch (error) {
       showToast("音频启动失败：" + error.message);
     }
-  }
-
-  function stopMusic() {
-    music.playing = false;
-    clearInterval(music.padTimer);
-    clearTimeout(music.bellTimer);
-    if (music.ctx && music.ctx.state === "running") music.ctx.suspend();
-    $("musicButton").textContent = "播放音乐";
-    $("musicButton").classList.remove("active");
-  }
-
-  $("musicButton").addEventListener("click", () => { if (music.playing) stopMusic(); else startMusic(); });
+  });
 
   $("gestureButton").addEventListener("click", async () => {
     if (state.gestureActive) await stopGesture();
     else await initGesture();
   });
-
-  window.addEventListener("pagehide", () => { if (music.playing) stopMusic(); });
 
   buildScene();
   loadPhotos();
