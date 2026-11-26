@@ -87,7 +87,7 @@
 <div class="hint" id="hint">
   <strong>把走过的山，聚成一棵树</strong>
   拖拽旋转，滚轮缩放，点击照片进入聚焦。按 1 / 2 / 3 切换模式，H 隐藏界面。<br />
-  启用摄像头后：握拳聚拢，张手散开；比 ✌️ 放大离手最近的照片，左右移动手切换回忆，握拳返回树形。
+  启用摄像头后：握拳聚拢，张手散开；比 ✌️ 放大离手最近的照片，左右挥手切换回忆，握拳返回树形。
 </div>
 <div class="photo-layer" id="photoLayer"></div>
 
@@ -112,11 +112,18 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <audio id="bgm" src="music/episode33.mp3" loop preload="auto"></audio>
 
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script>
 (() => {
   "use strict";
 
   const $ = id => document.getElementById(id);
+  // 云端配置（WorkBuddy 云服务公开配置，所有访客只读同一份回忆）
+  const cloud = window.WorkBuddyCloud ? WorkBuddyCloud.createWorkBuddyCloud({
+    endpoint: "https://hiking-memories-70794.app.workbuddy.host",
+    oauthRelayBaseUrl: "https://www.workbuddy.cn/v2/as/genie-baas/oauth",
+    publishableKey: "wbpk_Eyw8KsG6CLfrEDCcyFQ6TW_fFF2J412eW0000AY5wZg2dsdZEMdZ4iT"
+  }) : null;
   const canvas = $("scene");
   const ctx = canvas.getContext("2d");
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -125,7 +132,8 @@
     rot: 0, rotationVelocity: 0, zoom: 1, dragging: false, lastPointerX: 0,
     gestureActive: false, gestureRecognizer: null, stream: null, lastVideoTime: -1,
     lastGesture: "", gestureCounter: 0, lastModeTime: 0, lastEffectTime: 0,
-    interfaceHidden: false, toastTimer: null, photoScreenXs: [], lastGestureSwitch: 0
+    interfaceHidden: false, toastTimer: null, photoScreenXs: [], lastGestureSwitch: 0,
+    handTrail: [], swipeArmed: true
   };
 
   let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, treeH = 0, baseR = 0, focal = 1;
@@ -231,9 +239,33 @@
     }
   }
 
+  async function loadCloudPhotos() {
+    if (!cloud) return [];
+    const { data, error } = await cloud.database.from("memories")
+      .select("id, title, location, date, distance, note, image_data, created_at_ms")
+      .order("created_at_ms", { ascending: false }).limit(500);
+    if (error) throw error;
+    return (data || []).map(row => ({
+      id: row.id, src: row.image_data, custom: true, cloud: true,
+      title: row.title || "山野回忆", location: row.location || "", date: row.date || "",
+      distance: row.distance || "", note: row.note || "", createdAt: Number(row.created_at_ms) || 0
+    }));
+  }
+
   async function loadPhotos() {
-    const results = await Promise.all([loadBundledPhotos(), loadCustomPhotos()]);
-    state.memories = results[0].concat(results[1]).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    const results = await Promise.allSettled([loadBundledPhotos(), loadCustomPhotos(), loadCloudPhotos()]);
+    const bundled = results[0].status === "fulfilled" ? results[0].value : [];
+    const local = results[1].status === "fulfilled" ? results[1].value : [];
+    const cloudFailed = results[2].status === "rejected";
+    const cloudPhotos = cloudFailed ? [] : results[2].value;
+    if (cloudFailed) showToast("云端暂时连接不上，先展示本机已有的照片", 4600);
+    // 云端优先，本地未同步的补充在后面，按 id 去重
+    const seen = new Set();
+    state.memories = bundled.concat(cloudPhotos, local).filter(memory => {
+      if (seen.has(memory.id)) return false;
+      seen.add(memory.id);
+      return true;
+    }).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
     renderPhotoChips();
     if (!state.memories.length) $("status").textContent = "还没有照片，先到记忆馆添加回忆";
   }
@@ -689,27 +721,59 @@
       if (gesture === state.lastGesture) state.gestureCounter++;
       else { state.gestureCounter = 0; state.lastGesture = gesture; }
       const handX = landmarks && landmarks[9] ? landmarks[9].x : null;
+      // 手部水平轨迹（最近 420ms），用于挥动方向检测
+      if (handX != null) {
+        state.handTrail.push({ x: handX, t: now });
+        while (state.handTrail.length && now - state.handTrail[0].t > 420) state.handTrail.shift();
+        // 手回到中间区域后重新武装，避免一次挥动连切多张
+        if (handX > .40 && handX < .60) state.swipeArmed = true;
+      } else {
+        state.handTrail = [];
+        state.swipeArmed = true;
+      }
       const modeMap = { Closed_Fist: "TREE", Open_Palm: "SCATTER", Pointing_Up: "FOCUS" };
       const mapped = modeMap[gesture];
       if (mapped && state.gestureCounter >= 4 && mapped !== state.mode && now - state.lastModeTime > 900) {
         if (mapped === "FOCUS" && state.shownPhotos.length) state.focusIndex = (state.focusIndex + 1) % state.shownPhotos.length;
         setMode(mapped, true);
         state.lastModeTime = now;
+        state.handTrail = [];
+        state.lastGestureSwitch = now;
       }
-      if (gesture === "Victory" && state.gestureCounter >= 3) {
+      // ✌️ 剪刀手：2 帧即可锁定最近照片并放大（原需 3 帧，容易因识别抖动失效）
+      if (gesture === "Victory" && state.gestureCounter >= 2) {
         if (state.mode !== "FOCUS" && state.shownPhotos.length) {
           state.focusIndex = nearestPhotoIndex(handX == null ? .5 : handX);
           setMode("FOCUS", true);
+          state.lastGestureSwitch = now;
+          state.handTrail = [];
+          state.swipeArmed = false;
           burst(W / 2, H / 2, 30);
-          showToast("✌️ 已放大这张回忆：左右移动手切换，握拳返回树形");
-        } else if (state.mode === "FOCUS" && handX != null && state.shownPhotos.length && now - state.lastGestureSwitch > 1100) {
-          if (handX < .38) {
-            state.focusIndex = (state.focusIndex - 1 + state.shownPhotos.length) % state.shownPhotos.length;
-            renderFocus(); burst(W / 2, H / 2, 20); state.lastGestureSwitch = now;
-          } else if (handX > .62) {
-            state.focusIndex = (state.focusIndex + 1) % state.shownPhotos.length;
-            renderFocus(); burst(W / 2, H / 2, 20); state.lastGestureSwitch = now;
-          }
+          showToast("✌️ 已放大这张回忆：左右挥手切换，握拳返回树形");
+        }
+      }
+      // 聚焦模式下的左右切换：挥动方向优先，边缘位置兜底；手势识别短暂丢失（None/空）也能切
+      if (state.mode === "FOCUS" && handX != null && state.shownPhotos.length &&
+          state.swipeArmed && now - state.lastGestureSwitch > 600 &&
+          gesture !== "Open_Palm" && gesture !== "Closed_Fist" && gesture !== "Pointing_Up") {
+        let direction = 0;
+        const trail = state.handTrail;
+        if (trail.length >= 2) {
+          const dx = handX - trail[0].x;
+          if (dx <= -.12) direction = -1;
+          else if (dx >= .12) direction = 1;
+        }
+        if (!direction) {
+          if (handX < .32) direction = -1;
+          else if (handX > .68) direction = 1;
+        }
+        if (direction) {
+          state.focusIndex = (state.focusIndex + direction + state.shownPhotos.length) % state.shownPhotos.length;
+          renderFocus();
+          burst(W / 2, H / 2, 20);
+          state.lastGestureSwitch = now;
+          state.handTrail = [];
+          state.swipeArmed = false;
         }
       }
       if (["ILoveYou", "Thumb_Up"].includes(gesture) && now - state.lastEffectTime > 2200) {

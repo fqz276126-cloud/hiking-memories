@@ -215,7 +215,8 @@
     <div><div class="brand-name">山野足迹</div><div class="brand-sub">TRAIL MEMORIES</div></div>
   </div>
   <div class="header-actions">
-    <button class="button button-quiet header-backup" id="backupButton" type="button">备份与恢复</button>
+    <button class="button button-quiet header-backup" id="backupButton" type="button">备份与同步</button>
+    <button class="button button-quiet" id="authButton" type="button">登录管理</button>
     <button class="button button-primary js-add" type="button">记录一次徒步</button>
   </div>
 </header>
@@ -284,7 +285,7 @@
 
 <footer class="shell site-footer">
   <div><span class="footer-brand">山野足迹</span> · 山高路远，步步值得。</div>
-  <div>本地保存 · 支持 GitHub Pages · <button class="text-button" id="footerBackup" type="button">备份与恢复</button></div>
+  <div>云端同步 · 换设备也能看到同一份回忆 · <button class="text-button" id="footerBackup" type="button">备份与同步</button></div>
 </footer>
 
 <dialog class="form-dialog" id="editorDialog">
@@ -313,13 +314,38 @@
 
 <dialog class="form-dialog" id="backupDialog">
   <button class="dialog-close" id="closeBackup" type="button" aria-label="关闭">×</button>
-  <h2 class="dialog-heading">你的回忆，由你保管</h2>
-  <p class="dialog-description">本机添加的照片和文字保存在当前浏览器。导出备份后，可以在其他浏览器或电脑上恢复。仓库中的公开照片已经随代码保存，不需要重复备份。</p>
+  <h2 class="dialog-heading">云端同步与备份</h2>
+  <p class="dialog-description">登录后添加的回忆保存在云端，手机、电脑、其他浏览器打开都是同一份。本机旧浏览器里未上传的回忆，可以在这里一键同步到云端。</p>
   <div class="backup-actions">
-    <button class="backup-action" id="exportBackup" type="button"><strong>导出本机回忆备份</strong><span>生成一个包含照片和文字的 JSON 文件，请妥善保存。</span></button>
-    <button class="backup-action" id="importBackup" type="button"><strong>从备份恢复</strong><span>导入之前导出的备份文件，原有回忆不会被覆盖。</span></button>
+    <button class="backup-action" id="syncCloud" type="button"><strong>同步本机回忆到云端</strong><span id="syncHint">把这台设备浏览器里保存的旧回忆上传到云端，上传后所有设备都能看到。</span></button>
+    <button class="backup-action" id="exportBackup" type="button"><strong>导出本机回忆备份</strong><span>把本机未同步的回忆生成一个包含照片和文字的 JSON 文件，请妥善保存。</span></button>
+    <button class="backup-action" id="importBackup" type="button"><strong>从备份恢复</strong><span>导入之前导出的备份文件到本机，原有回忆不会被覆盖；恢复后可再同步到云端。</span></button>
     <input id="backupInput" type="file" accept="application/json,.json" hidden />
   </div>
+</dialog>
+
+<dialog class="form-dialog" id="authDialog">
+  <button class="dialog-close" id="closeAuth" type="button" aria-label="关闭">×</button>
+  <h2 class="dialog-heading">登录后管理你的山野回忆</h2>
+  <p class="dialog-description">任何人都能浏览这个记忆馆；只有登录后才能上传、编辑和删除。用验证码即可登录，新手机号/邮箱会自动注册。</p>
+  <div class="view-switch" style="margin-bottom: 20px; width: max-content;">
+    <button class="view-button active" id="otpTabPhone" type="button">手机验证码</button>
+    <button class="view-button" id="otpTabEmail" type="button">邮箱验证码</button>
+  </div>
+  <form id="authForm">
+    <div class="form-grid">
+      <div class="field field-full" id="phoneField"><label for="phoneInput">手机号</label><input id="phoneInput" type="tel" inputmode="numeric" maxlength="11" placeholder="11 位手机号" autocomplete="tel" /></div>
+      <div class="field field-full" id="emailField" hidden><label for="emailInput">邮箱</label><input id="emailInput" type="email" placeholder="you@example.com" autocomplete="email" /></div>
+      <div class="field field-full">
+        <label for="otpInput">验证码</label>
+        <div style="display: flex; gap: 10px;">
+          <input id="otpInput" inputmode="numeric" maxlength="6" placeholder="6 位验证码" style="flex: 1;" />
+          <button class="button button-small" id="sendOtp" type="button" style="flex: none; height: auto;">获取验证码</button>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions"><button class="button button-primary" id="submitOtp" type="submit">登录 / 注册</button></div>
+  </form>
 </dialog>
 
 <dialog class="lightbox" id="lightbox">
@@ -347,14 +373,22 @@
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script>
 (() => {
   "use strict";
 
   const $ = id => document.getElementById(id);
+  // 云端配置（WorkBuddy 云服务公开配置）：照片与徒步记录保存在云端，任何设备打开都是同一份
+  const cloud = window.WorkBuddyCloud ? WorkBuddyCloud.createWorkBuddyCloud({
+    endpoint: "https://hiking-memories-70794.app.workbuddy.host",
+    oauthRelayBaseUrl: "https://www.workbuddy.cn/v2/as/genie-baas/oauth",
+    publishableKey: "wbpk_Eyw8KsG6CLfrEDCcyFQ6TW_fFF2J412eW0000AY5wZg2dsdZEMdZ4iT"
+  }) : null;
   const state = {
     memories: [], view: "grid", editingId: null, pendingFiles: [], previewUrls: [],
-    dbPromise: null, lightboxList: [], lightboxIndex: 0, toastTimer: null
+    dbPromise: null, lightboxList: [], lightboxIndex: 0, toastTimer: null,
+    session: null, cloudOnline: true, pendingOtp: null, otpMethod: "phone", syncing: false
   };
   const objectUrls = [];
 
@@ -407,29 +441,73 @@
   function customMemory(record) {
     const src = URL.createObjectURL(record.blob);
     objectUrls.push(src);
-    return { ...record, src, custom: true, temporary: false };
+    return { ...record, src, custom: true, cloud: false, temporary: false };
   }
 
-  async function preparePhoto(file) {
-    if (!/^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type)) throw new Error("不支持的照片格式");
-    if (file.type === "image/gif" || file.size < 2500000 || !window.createImageBitmap) return file;
-    try {
-      const bitmap = await createImageBitmap(file);
-      const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
-      if (scale === 1 && file.size < 6000000) { bitmap.close(); return file; }
+  function cloudMemory(row) {
+    return {
+      id: row.id, src: row.image_data, custom: true, cloud: true, ownerId: row.owner_id,
+      title: row.title || "山野回忆", location: row.location || "", date: row.date || "",
+      distance: row.distance || "", note: row.note || "", fileName: row.file_name || "徒步照片",
+      createdAt: Number(row.created_at_ms) || 0
+    };
+  }
+
+  async function loadCloudMemories() {
+    if (!cloud) throw new Error("云端组件未加载，请检查网络后刷新");
+    const { data, error } = await cloud.database.from("memories").select("*")
+      .order("created_at_ms", { ascending: false }).limit(500);
+    if (error) throw error;
+    return (data || []).map(cloudMemory);
+  }
+
+  // 云端照片：压缩到适合网页显示的尺寸并转成 data URL，随记录存入云数据库
+  async function prepareCloudPhoto(file) {
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type)) throw new Error("不支持的照片格式：" + file.name);
+    if (file.type === "image/gif") {
+      if (file.size > 900000) throw new Error("GIF 动图请压缩到 900KB 以内再上传");
+      return blobToDataURL(file);
+    }
+    if (!window.createImageBitmap) {
+      if (file.size > 900000) throw new Error("当前浏览器无法压缩照片，请选择 900KB 以内的图片");
+      return blobToDataURL(file);
+    }
+    const bitmap = await createImageBitmap(file);
+    let maxSide = 1500;
+    let dataUrl = "";
+    for (const quality of [.82, .7, .55]) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const context = canvas.getContext("2d");
-      const outputType = file.type === "image/png" ? "image/webp" : "image/jpeg";
-      if (outputType === "image/jpeg") { context.fillStyle = "#f3f1e9"; context.fillRect(0, 0, canvas.width, canvas.height); }
+      context.fillStyle = "#f3f1e9";
+      context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, outputType, .9));
-      return blob || file;
-    } catch (error) {
-      return file;
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (!blob) continue;
+      dataUrl = await blobToDataURL(blob);
+      if (dataUrl.length < 1300000) break;
+      maxSide = Math.round(maxSide * .8);
     }
+    bitmap.close();
+    if (!dataUrl) throw new Error("照片压缩失败，请换一张试试");
+    return dataUrl;
+  }
+
+  function canEdit(memory) {
+    if (!memory || !memory.custom) return false;
+    if (memory.cloud) return Boolean(state.session && memory.ownerId === state.session.user.id);
+    return Boolean(memory.blob);
+  }
+
+  function mergeMemories(bundled, cloudItems, localItems) {
+    const seen = new Set();
+    return bundled.concat(cloudItems, localItems).filter(memory => {
+      if (seen.has(memory.id)) return false;
+      seen.add(memory.id);
+      return true;
+    });
   }
 
   async function loadBundledMemories() {
@@ -535,7 +613,7 @@
       title.type = "button";
       title.addEventListener("click", () => openLightbox(memory.id));
       const footer = element("div", "card-footer");
-      footer.append(element("span", "", memory.distance || "慢慢走，也值得"), element("span", "", memory.custom ? "本机回忆" : "公开回忆"));
+      footer.append(element("span", "", memory.distance || "慢慢走，也值得"), element("span", "", memory.custom ? (memory.cloud ? "云端回忆" : "本机待同步") : "公开回忆"));
       body.append(meta, title, element("p", "card-note", memory.note || "那天的山风和脚步，都留在这里。"), footer);
       card.append(imageButton, body);
       grid.appendChild(card);
@@ -642,9 +720,16 @@
     try {
       if (state.editingId) {
         const memory = state.memories.find(item => item.id === state.editingId);
-        if (!memory || !memory.custom) return;
-        const record = { id: memory.id, ...metadata, blob: memory.blob, createdAt: memory.createdAt };
-        try { await withStore("readwrite", store => store.put(record)); } catch (error) { showToast("信息已更新，但无法写入本地数据库"); }
+        if (!memory || !canEdit(memory)) return;
+        if (memory.cloud) {
+          if (!requireLogin()) return;
+          const { data, error } = await cloud.database.from("memories").update(metadata).eq("id", memory.id).select();
+          if (error) { showToast("保存失败：" + error.message, 5000); return; }
+          if (!data || !data.length) { showToast("没有修改成功：记录不存在或你不是它的主人", 4800); return; }
+        } else {
+          const record = { id: memory.id, ...metadata, blob: memory.blob, createdAt: memory.createdAt };
+          try { await withStore("readwrite", store => store.put(record)); } catch (error) { showToast("信息已更新，但无法写入本地数据库"); }
+        }
         Object.assign(memory, metadata);
         closeDialog($("editorDialog"));
         closeDialog($("lightbox"));
@@ -657,24 +742,32 @@
         showToast("请先选择至少一张徒步照片");
         return;
       }
+      // 新增回忆直接保存到云端：换手机、换浏览器、朋友打开都能看到
+      if (!cloud) { showToast("云端组件未加载，请检查网络后刷新再保存", 5000); return; }
+      if (!requireLogin()) return;
       $("saveMemory").textContent = "正在保存...";
       let added = 0;
       for (let index = 0; index < state.pendingFiles.length; index++) {
         const file = state.pendingFiles[index];
-        const blob = await preparePhoto(file);
-        const record = { id: uid(), ...metadata, blob, createdAt: Date.now() + index, fileName: file.name };
-        await withStore("readwrite", store => store.put(record));
-        state.memories.push(customMemory(record));
+        const imageData = await prepareCloudPhoto(file);
+        const row = {
+          id: uid(), title: metadata.title, location: metadata.location, date: metadata.date,
+          distance: metadata.distance, note: metadata.note, file_name: file.name,
+          image_data: imageData, created_at_ms: Date.now() + index
+        };
+        const { data, error } = await cloud.database.from("memories").insert(row).select();
+        if (error) throw new Error(error.message || "云端保存失败");
+        state.memories.push(cloudMemory(data[0]));
         added++;
-        $("saveMemory").textContent = `正在保存 ${index + 1} / ${state.pendingFiles.length}`;
+        $("saveMemory").textContent = `正在上传 ${index + 1} / ${state.pendingFiles.length}`;
       }
       closeDialog($("editorDialog"));
       clearPendingFiles();
       render();
-      showToast(`已保存 ${added} 张照片和这段徒步回忆`);
+      showToast(`已保存 ${added} 张照片到云端，其他设备也能看到了`);
       setTimeout(() => $("archive").scrollIntoView({ behavior: "smooth", block: "start" }), 150);
     } catch (error) {
-      showToast("保存失败：可能是浏览器存储空间不足，请压缩照片或清理空间后重试", 5200);
+      showToast("保存失败：" + (error && error.message ? error.message : "请检查网络后重试"), 5200);
     } finally {
       $("saveMemory").disabled = false;
       $("saveMemory").textContent = state.editingId ? "保存修改" : "保存回忆";
@@ -695,8 +788,8 @@
     $("downloadPhoto").href = memory.src;
     const extension = memory.blob && memory.blob.type === "image/png" ? "png" : memory.blob && memory.blob.type === "image/webp" ? "webp" : "jpg";
     $("downloadPhoto").download = `${memory.title.replace(/[\\/:*?"<>|]/g, "-")}.${extension}`;
-    $("editMemory").hidden = !memory.custom;
-    $("deleteMemory").hidden = !memory.custom;
+    $("editMemory").hidden = !canEdit(memory);
+    $("deleteMemory").hidden = !canEdit(memory);
     const multiple = state.lightboxList.length > 1;
     $("previousPhoto").hidden = !multiple;
     $("nextPhoto").hidden = !multiple;
@@ -710,14 +803,23 @@
 
   async function deleteCurrentMemory() {
     const memory = state.lightboxList[state.lightboxIndex];
-    if (!memory || !memory.custom) return;
-    if (!window.confirm("确定删除这段本机回忆吗？原始照片文件不会被删除，此操作可通过之前的备份恢复。")) return;
-    try { await withStore("readwrite", store => store.delete(memory.id)); } catch (error) { showToast("删除失败，请稍后重试"); return; }
+    if (!memory || !canEdit(memory)) return;
+    if (memory.cloud) {
+      if (!requireLogin()) return;
+      if (!window.confirm("确定从云端删除这段回忆吗？所有设备上都会移除，此操作不可恢复。")) return;
+      const { data, error } = await cloud.database.from("memories").delete().eq("id", memory.id).select();
+      if (error) { showToast("删除失败：" + error.message, 5000); return; }
+      if (!data || !data.length) { showToast("删除失败：记录不存在或你不是它的主人", 4800); return; }
+    } else {
+      if (!window.confirm("确定删除这段本机回忆吗？原始照片文件不会被删除，此操作可通过之前的备份恢复。")) return;
+      try { await withStore("readwrite", store => store.delete(memory.id)); } catch (error) { showToast("删除失败，请稍后重试"); return; }
+    }
     state.memories = state.memories.filter(item => item.id !== memory.id);
-    URL.revokeObjectURL(memory.src);
+    if (memory.blob) URL.revokeObjectURL(memory.src);
     closeDialog($("lightbox"));
     render();
-    showToast("这段本机回忆已删除");
+    updateSyncHint();
+    showToast("这段回忆已删除");
   }
 
   function blobToDataURL(blob) {
@@ -730,7 +832,7 @@
   }
 
   async function exportBackup() {
-    const custom = state.memories.filter(memory => memory.custom);
+    const custom = state.memories.filter(memory => memory.custom && !memory.cloud && memory.blob);
     if (!custom.length) { showToast("还没有需要备份的本机回忆"); return; }
     $("exportBackup").disabled = true;
     try {
@@ -814,10 +916,180 @@
     if (event.key === "ArrowRight") moveLightbox(1);
   });
 
-  Promise.all([loadBundledMemories(), loadCustomMemories()]).then(results => {
-    state.memories = results[0].concat(results[1]);
+  // ---------- 登录（验证码）与云端同步 ----------
+  function updateSyncHint() {
+    const count = state.memories.filter(memory => memory.custom && !memory.cloud && memory.blob).length;
+    $("syncHint").textContent = count
+      ? `本机有 ${count} 条回忆还没上传，点击这里同步到云端（需登录），同步后所有设备可见。`
+      : "本机没有待同步的旧回忆。登录后添加的新回忆会直接保存到云端。";
+  }
+
+  function updateAuthUI() {
+    $("authButton").textContent = state.session ? "已登录 · 退出" : "登录管理";
     render();
+    if ($("lightbox").open) renderLightbox();
+    updateSyncHint();
+  }
+
+  function requireLogin() {
+    if (state.session) return true;
+    showToast("上传和管理回忆需要先登录，浏览不受影响");
+    openDialog($("authDialog"));
+    return false;
+  }
+
+  async function restoreSession() {
+    if (!cloud) return;
+    try {
+      const { data } = await cloud.auth.getSession();
+      state.session = data || null;
+    } catch (error) {
+      state.session = null;
+    }
+    updateAuthUI();
+  }
+
+  function setOtpMethod(method) {
+    state.otpMethod = method;
+    state.pendingOtp = null;
+    $("otpTabPhone").classList.toggle("active", method === "phone");
+    $("otpTabEmail").classList.toggle("active", method === "email");
+    $("phoneField").hidden = method !== "phone";
+    $("emailField").hidden = method !== "email";
+  }
+
+  async function sendOtpCode() {
+    if (!cloud) { showToast("云端组件未加载，请检查网络后刷新"); return; }
+    const method = state.otpMethod;
+    const contact = method === "phone" ? $("phoneInput").value.trim() : $("emailInput").value.trim();
+    if (method === "phone" && !/^1\d{10}$/.test(contact)) { showToast("请输入正确的 11 位手机号"); return; }
+    if (method === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) { showToast("请输入正确的邮箱地址"); return; }
+    $("sendOtp").disabled = true;
+    $("sendOtp").textContent = "发送中...";
+    try {
+      const sent = await cloud.auth.sendOtp(method === "phone" ? { phone: contact } : { email: contact });
+      if (sent.error) {
+        showToast("发送失败：" + sent.error.message, 5600);
+        $("sendOtp").disabled = false;
+        $("sendOtp").textContent = "获取验证码";
+        return;
+      }
+      state.pendingOtp = { method, contact, verificationId: sent.data.verificationId, isExistingUser: sent.data.isExistingUser };
+      showToast("验证码已发送，请查收" + (method === "phone" ? "短信" : "邮件"));
+      let seconds = 60;
+      const tick = () => {
+        if (seconds <= 0) { $("sendOtp").disabled = false; $("sendOtp").textContent = "重新获取"; return; }
+        $("sendOtp").textContent = `${seconds}s 后重发`;
+        seconds--;
+        setTimeout(tick, 1000);
+      };
+      tick();
+    } catch (error) {
+      showToast("发送失败，请检查网络后重试", 4800);
+      $("sendOtp").disabled = false;
+      $("sendOtp").textContent = "获取验证码";
+    }
+  }
+
+  async function submitOtpLogin(event) {
+    event.preventDefault();
+    const pending = state.pendingOtp;
+    const contact = pending ? (pending.method === "phone" ? $("phoneInput").value.trim() : $("emailInput").value.trim()) : "";
+    if (!pending || pending.contact !== contact) { showToast("请先获取验证码"); return; }
+    const token = $("otpInput").value.trim();
+    if (!token) { showToast("请输入收到的验证码"); return; }
+    $("submitOtp").disabled = true;
+    try {
+      const payload = { verificationId: pending.verificationId, isExistingUser: pending.isExistingUser, token };
+      if (pending.method === "phone") payload.phone = pending.contact;
+      else payload.email = pending.contact;
+      const completed = await cloud.auth.verifyOtp(payload);
+      if (completed.error) { showToast("登录失败：" + completed.error.message, 5000); return; }
+      state.pendingOtp = null;
+      state.session = completed.data;
+      $("otpInput").value = "";
+      closeDialog($("authDialog"));
+      updateAuthUI();
+      showToast("登录成功，现在可以上传和管理回忆了");
+    } catch (error) {
+      showToast("登录失败，请稍后重试", 4800);
+    } finally {
+      $("submitOtp").disabled = false;
+    }
+  }
+
+  async function refreshMemories() {
+    const results = await Promise.allSettled([loadBundledMemories(), loadCustomMemories(), loadCloudMemories()]);
+    const bundled = results[0].status === "fulfilled" ? results[0].value : [];
+    const local = results[1].status === "fulfilled" ? results[1].value : [];
+    state.cloudOnline = results[2].status === "fulfilled";
+    const cloudItems = state.cloudOnline ? results[2].value : [];
+    state.memories = mergeMemories(bundled, cloudItems, local);
+    if (!state.cloudOnline) showToast("云端暂时连接不上，当前显示本机保存的回忆，上传功能暂不可用", 5200);
+    render();
+    updateSyncHint();
+  }
+
+  async function syncLocalToCloud() {
+    if (!requireLogin()) return;
+    if (state.syncing) return;
+    const pending = state.memories.filter(memory => memory.custom && !memory.cloud && memory.blob);
+    if (!pending.length) { showToast("本机没有待同步的回忆"); return; }
+    state.syncing = true;
+    $("syncCloud").disabled = true;
+    let done = 0, failed = 0;
+    for (const memory of pending) {
+      try {
+        $("syncHint").textContent = `正在上传 ${done + failed + 1} / ${pending.length}：${memory.title}`;
+        const file = new File([memory.blob], memory.fileName || "徒步照片.jpg", { type: memory.blob.type || "image/jpeg" });
+        const imageData = await prepareCloudPhoto(file);
+        const row = {
+          id: memory.id, title: memory.title, location: memory.location || "", date: memory.date || "",
+          distance: memory.distance || "", note: memory.note || "", file_name: memory.fileName || "徒步照片",
+          image_data: imageData, created_at_ms: memory.createdAt || Date.now()
+        };
+        const { error } = await cloud.database.from("memories").insert(row).select();
+        // 云端已存在同 id 记录（23505）视为已同步，直接清理本机副本
+        if (error && error.code !== "23505") throw new Error(error.message || "上传失败");
+        await withStore("readwrite", store => store.delete(memory.id));
+        done++;
+      } catch (error) {
+        failed++;
+      }
+    }
+    state.syncing = false;
+    $("syncCloud").disabled = false;
+    await refreshMemories();
+    if (failed) showToast(`已上传 ${done} 条，${failed} 条失败，可稍后重试`, 5200);
+    else {
+      closeDialog($("backupDialog"));
+      showToast(`已把 ${done} 条本机回忆同步到云端，其他设备也能看到了`, 4200);
+    }
+  }
+
+  $("authButton").addEventListener("click", async () => {
+    if (!state.session) { openDialog($("authDialog")); return; }
+    if (!window.confirm("退出登录后仍可浏览回忆，但不能上传和编辑。确定退出吗？")) return;
+    try { await cloud.auth.signOut(); } catch (error) { /* 网络失败也按本地退出处理 */ }
+    state.session = null;
+    updateAuthUI();
+    showToast("已退出登录");
   });
+  $("closeAuth").addEventListener("click", () => closeDialog($("authDialog")));
+  $("otpTabPhone").addEventListener("click", () => setOtpMethod("phone"));
+  $("otpTabEmail").addEventListener("click", () => setOtpMethod("email"));
+  $("sendOtp").addEventListener("click", sendOtpCode);
+  $("authForm").addEventListener("submit", submitOtpLogin);
+  $("syncCloud").addEventListener("click", syncLocalToCloud);
+  if (cloud) {
+    cloud.auth.onAuthStateChange((event, session) => {
+      state.session = session || null;
+      updateAuthUI();
+    });
+  }
+
+  restoreSession();
+  refreshMemories();
 })();
 </script>
 </body>
