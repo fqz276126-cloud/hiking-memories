@@ -90,8 +90,8 @@
   .memory-card { overflow: hidden; border: 1px solid rgba(23, 53, 45, .09); border-radius: 18px; background: rgba(255, 254, 249, .72); transition: transform .25s, box-shadow .25s; }
   .memory-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
   .card-image { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; border: 0; background: #dce2d9; cursor: zoom-in; }
-  .card-image img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; transition: transform .45s; }
-  .memory-card:hover .card-image img { transform: scale(1.025); }
+  .card-image img, .card-image video { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; transition: transform .45s; }
+  .memory-card:hover .card-image img, .memory-card:hover .card-image video { transform: scale(1.025); }
   .card-index { position: absolute; top: 13px; left: 13px; padding: 5px 9px; border-radius: 999px; color: white; background: rgba(14, 34, 28, .64); backdrop-filter: blur(8px); font-family: Georgia, serif; font-size: 11px; }
   .card-body { padding: 18px 19px 17px; }
   .card-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--accent); font-size: 10px; letter-spacing: .08em; }
@@ -112,7 +112,7 @@
   .timeline-date { padding-top: 19px; color: var(--muted); font-family: Georgia, serif; font-size: 13px; text-align: right; }
   .timeline-card { position: relative; display: grid; grid-template-columns: 150px 1fr; gap: 20px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 254, 249, .68); }
   .timeline-card::before { content: ""; position: absolute; left: -28px; top: 25px; width: 9px; height: 9px; border: 3px solid var(--paper); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .timeline-image { width: 150px; height: 120px; padding: 0; border: 0; border-radius: 10px; object-fit: cover; cursor: zoom-in; }
+  .timeline-image { width: 150px; height: 120px; padding: 0; border: 0; border-radius: 10px; object-fit: cover; cursor: zoom-in; background: #10251f; }
   .timeline-content h3 { margin: 7px 0; font-family: "Songti SC", serif; font-size: 21px; font-weight: 500; }
   .timeline-content p { margin: 7px 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
   .text-button { padding: 0; border: 0; color: var(--accent-dark); background: transparent; cursor: pointer; font-size: 12px; }
@@ -151,7 +151,7 @@
   .lightbox .dialog-close { color: white; border-color: rgba(255, 255, 255, .35); background: rgba(10, 25, 20, .4); }
   .lightbox-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, .7fr); min-height: min(720px, calc(100vh - 28px)); }
   .lightbox-media { position: relative; display: grid; place-items: center; min-height: 460px; background: #10251f; }
-  .lightbox-media img { display: block; width: 100%; height: 100%; max-height: calc(100vh - 28px); object-fit: contain; }
+  .lightbox-media img, .lightbox-media video { display: block; width: 100%; height: 100%; max-height: calc(100vh - 28px); object-fit: contain; }
   .lightbox-nav { position: absolute; top: 50%; width: 42px; height: 42px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 50%; color: white; background: rgba(10, 25, 20, .48); cursor: pointer; transform: translateY(-50%); }
   .lightbox-prev { left: 16px; }
   .lightbox-next { right: 16px; }
@@ -172,7 +172,7 @@
     .memory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .lightbox-layout { grid-template-columns: 1fr; overflow-y: auto; }
     .lightbox-media { min-height: 50vh; }
-    .lightbox-media img { max-height: 62vh; }
+    .lightbox-media img, .lightbox-media video { max-height: 62vh; }
     .lightbox-info { padding: 30px 24px; }
   }
   @media (max-width: 620px) {
@@ -295,10 +295,10 @@
   <form id="editorForm">
     <div class="field field-full" id="fileSection" style="margin-bottom: 18px;">
       <button class="upload-zone" id="uploadZone" type="button">
-        <strong>选择徒步照片，或拖到这里</strong>
-        <span>支持 JPG、PNG、WebP、GIF、AVIF，可多选</span>
+        <strong>选择徒步照片或视频，或拖到这里</strong>
+        <span>支持 JPG、PNG、WebP、GIF、AVIF 和 MP4、WebM 视频，可多选；视频请 20MB 以内</span>
       </button>
-      <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden />
+      <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" multiple hidden />
       <div class="upload-previews" id="uploadPreviews"></div>
     </div>
     <div class="form-grid">
@@ -353,6 +353,7 @@
   <div class="lightbox-layout">
     <div class="lightbox-media">
       <img id="lightboxImage" alt="徒步照片大图" />
+      <video id="lightboxVideo" controls loop playsinline hidden></video>
       <button class="lightbox-nav lightbox-prev" id="previousPhoto" type="button" aria-label="上一张">←</button>
       <button class="lightbox-nav lightbox-next" id="nextPhoto" type="button" aria-label="下一张">→</button>
     </div>
@@ -391,6 +392,60 @@
     session: null, cloudOnline: true, pendingOtp: null, otpMethod: "phone", syncing: false
   };
   const objectUrls = [];
+  const VIDEO_MAX_BYTES = 20 * 1024 * 1024;
+
+  // 徒步美感语录：未填写心情时，按回忆稳定分配一句（同一回忆每次打开都是同一句）
+  const HIKE_QUOTES = [
+    "山不见我，我自去见山。",
+    "那天的山风和脚步，都留在这里。",
+    "一步一步，把日子走成风景。",
+    "风从山上来，带着自由的味道。",
+    "山在那里，路在脚下。",
+    "走得越远，离自己越近。",
+    "山顶的风景，只对坚持的人可见。",
+    "慢下来，山野会告诉你答案。",
+    "每一步都算数，每一帧都值得。",
+    "去山里，把心事走成云海。",
+    "山高路远，步履不停。",
+    "与山野相遇的每一天，都是好日子。",
+    "云在肩上，风在耳边，路在脚下。",
+    "走过四季山川，收藏人间浪漫。",
+    "山风知我意，吹梦到山巅。",
+    "一路向前，山海皆温柔。"
+  ];
+  function quoteFor(memory) {
+    let hash = 0;
+    const key = String((memory && (memory.id || memory.title)) || "");
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    return HIKE_QUOTES[hash % HIKE_QUOTES.length];
+  }
+
+  function mediaTypeOf(memory) {
+    if (memory.mediaType) return memory.mediaType;
+    if (memory.blob && memory.blob.type) return memory.blob.type;
+    const src = memory.src || "";
+    const match = /^data:([^;]+)/i.exec(src);
+    if (match) return match[1];
+    return /\.(mp4|mov)(\?|#|$)/i.test(src) ? "video/mp4" : /\.webm(\?|#|$)/i.test(src) ? "video/webm" : "image/jpeg";
+  }
+  function isVideoMemory(memory) {
+    return /^video\//i.test(mediaTypeOf(memory));
+  }
+  // 卡片缩略媒体元素：视频显示首帧画面，点击进入灯箱播放
+  function thumbElement(memory, className) {
+    if (isVideoMemory(memory)) {
+      const video = document.createElement("video");
+      video.className = className || "";
+      video.src = memory.src + "#t=0.1";
+      video.muted = true; video.loop = true; video.playsInline = true;
+      video.preload = "metadata"; video.setAttribute("playsinline", "");
+      return video;
+    }
+    const image = element("img", className || "");
+    image.src = memory.src;
+    image.alt = memory.title;
+    return image;
+  }
 
   function showToast(message, duration = 3200) {
     clearTimeout(state.toastTimer);
@@ -447,6 +502,7 @@
   function cloudMemory(row) {
     return {
       id: row.id, src: row.image_data, custom: true, cloud: true, ownerId: row.owner_id,
+      mediaType: row.media_type || (/^data:video\//i.test(row.image_data || "") ? "video/mp4" : "image"),
       title: row.title || "山野回忆", location: row.location || "", date: row.date || "",
       distance: row.distance || "", note: row.note || "", fileName: row.file_name || "徒步照片",
       createdAt: Number(row.created_at_ms) || 0
@@ -493,6 +549,15 @@
     bitmap.close();
     if (!dataUrl) throw new Error("照片压缩失败，请换一张试试");
     return dataUrl;
+  }
+
+  // 统一处理待上传的媒体：照片压缩转 data URL，视频原样转 data URL（限制体积）
+  async function prepareCloudMedia(file) {
+    if (/^video\//i.test(file.type)) {
+      if (file.size > VIDEO_MAX_BYTES) throw new Error("视频「" + file.name + "」超过 20MB，请压缩后再上传");
+      return { dataUrl: await blobToDataURL(file), mediaType: file.type || "video/mp4" };
+    }
+    return { dataUrl: await prepareCloudPhoto(file), mediaType: "image" };
   }
 
   function canEdit(memory) {
@@ -600,9 +665,7 @@
       const imageButton = element("button", "card-image");
       imageButton.type = "button";
       imageButton.setAttribute("aria-label", `查看 ${memory.title}`);
-      const image = element("img");
-      image.src = memory.src;
-      image.alt = memory.title;
+      const image = thumbElement(memory);
       image.loading = "lazy";
       imageButton.append(image, element("span", "card-index", String(index + 1).padStart(2, "0")));
       imageButton.addEventListener("click", () => openLightbox(memory.id));
@@ -614,7 +677,7 @@
       title.addEventListener("click", () => openLightbox(memory.id));
       const footer = element("div", "card-footer");
       footer.append(element("span", "", memory.distance || "慢慢走，也值得"), element("span", "", memory.custom ? (memory.cloud ? "云端回忆" : "本机待同步") : "公开回忆"));
-      body.append(meta, title, element("p", "card-note", memory.note || "那天的山风和脚步，都留在这里。"), footer);
+      body.append(meta, title, element("p", "card-note", memory.note || quoteFor(memory)), footer);
       card.append(imageButton, body);
       grid.appendChild(card);
     });
@@ -627,9 +690,7 @@
       const item = element("article", "timeline-item");
       item.appendChild(element("div", "timeline-date", formatDate(memory.date, true)));
       const card = element("div", "timeline-card");
-      const image = element("img", "timeline-image");
-      image.src = memory.src;
-      image.alt = memory.title;
+      const image = thumbElement(memory, "timeline-image");
       image.addEventListener("click", () => openLightbox(memory.id));
       const content = element("div", "timeline-content");
       content.append(element("div", "section-kicker", memory.location || "山野之间"), element("h3", "", memory.title), element("p", "", memory.note || memory.distance || "一段值得记住的徒步时光。"));
@@ -680,16 +741,25 @@
   function setPendingFiles(files) {
     const selectedFiles = Array.from(files || []);
     clearPendingFiles();
-    state.pendingFiles = selectedFiles.filter(file => /^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type));
+    const mediaPattern = /^(image\/(jpeg|png|webp|gif|avif)|video\/(mp4|webm|quicktime))$/i;
+    state.pendingFiles = selectedFiles.filter(file => mediaPattern.test(file.type));
     state.pendingFiles.forEach(file => {
       const url = URL.createObjectURL(file);
       state.previewUrls.push(url);
-      const image = element("img");
-      image.src = url;
-      image.alt = file.name;
-      $("uploadPreviews").appendChild(image);
+      if (/^video\//i.test(file.type)) {
+        const video = element("video");
+        video.src = url;
+        video.muted = true; video.playsInline = true; video.preload = "metadata";
+        video.title = file.name;
+        $("uploadPreviews").appendChild(video);
+      } else {
+        const image = element("img");
+        image.src = url;
+        image.alt = file.name;
+        $("uploadPreviews").appendChild(image);
+      }
     });
-    if (!state.pendingFiles.length && files && files.length) showToast("请选择支持的图片格式");
+    if (!state.pendingFiles.length && files && files.length) showToast("请选择支持的图片或视频格式（视频需 20MB 以内）");
   }
 
   function openEditor(memory = null) {
@@ -698,7 +768,7 @@
     $("editorForm").reset();
     $("fileSection").hidden = Boolean(memory);
     $("editorTitle").textContent = memory ? "编辑徒步信息" : "记录一次徒步";
-    $("editorDescription").textContent = memory ? "修改标题、地点和文字，照片本身不会改变。" : "可以一次添加多张照片，它们会共享同一段路线信息。";
+    $("editorDescription").textContent = memory ? "修改标题、地点和文字，照片或视频本身不会改变。" : "可以一次添加多张照片或视频，它们会共享同一段路线信息。";
     $("saveMemory").textContent = memory ? "保存修改" : "保存回忆";
     $("titleInput").value = memory ? memory.title : "";
     $("locationInput").value = memory ? memory.location : "";
@@ -739,7 +809,7 @@
       }
 
       if (!state.pendingFiles.length) {
-        showToast("请先选择至少一张徒步照片");
+        showToast("请先选择至少一张照片或一段视频");
         return;
       }
       // 新增回忆直接保存到云端：换手机、换浏览器、朋友打开都能看到
@@ -749,11 +819,11 @@
       let added = 0;
       for (let index = 0; index < state.pendingFiles.length; index++) {
         const file = state.pendingFiles[index];
-        const imageData = await prepareCloudPhoto(file);
+        const media = await prepareCloudMedia(file);
         const row = {
           id: uid(), title: metadata.title, location: metadata.location, date: metadata.date,
           distance: metadata.distance, note: metadata.note, file_name: file.name,
-          image_data: imageData, created_at_ms: Date.now() + index
+          media_type: media.mediaType, image_data: media.dataUrl, created_at_ms: Date.now() + index
         };
         const { data, error } = await cloud.database.from("memories").insert(row).select();
         if (error) throw new Error(error.message || "云端保存失败");
@@ -764,7 +834,7 @@
       closeDialog($("editorDialog"));
       clearPendingFiles();
       render();
-      showToast(`已保存 ${added} 张照片到云端，其他设备也能看到了`);
+      showToast(`已保存 ${added} 条回忆到云端，其他设备也能看到了`);
       setTimeout(() => $("archive").scrollIntoView({ behavior: "smooth", block: "start" }), 150);
     } catch (error) {
       showToast("保存失败：" + (error && error.message ? error.message : "请检查网络后重试"), 5200);
@@ -777,17 +847,32 @@
   function renderLightbox() {
     const memory = state.lightboxList[state.lightboxIndex];
     if (!memory) return;
-    $("lightboxImage").src = memory.src;
+    const video = $("lightboxVideo");
+    const isVideo = isVideoMemory(memory);
+    if (isVideo) {
+      video.src = memory.src;
+      video.hidden = false;
+      video.play().catch(() => { /* 浏览器拦截时保留 controls 手动播放 */ });
+    } else {
+      video.pause(); video.removeAttribute("src"); video.load();
+      video.hidden = true;
+      $("lightboxImage").src = memory.src;
+    }
+    $("lightboxImage").hidden = isVideo;
     $("lightboxImage").alt = memory.title;
     $("lightboxDate").textContent = formatDate(memory.date);
     $("lightboxTitle").textContent = memory.title;
     $("lightboxLocation").textContent = memory.location || "山野之间";
-    $("lightboxNote").textContent = memory.note || "那天的山风和脚步，都留在这里。";
+    $("lightboxNote").textContent = memory.note || quoteFor(memory);
     $("lightboxDistance").textContent = memory.distance || "路线与距离未记录";
     $("lightboxCount").textContent = `${state.lightboxIndex + 1} / ${state.lightboxList.length}`;
     $("downloadPhoto").href = memory.src;
-    const extension = memory.blob && memory.blob.type === "image/png" ? "png" : memory.blob && memory.blob.type === "image/webp" ? "webp" : "jpg";
+    const mediaType = mediaTypeOf(memory);
+    const extension = isVideo
+      ? ({ "video/webm": "webm", "video/quicktime": "mov" }[mediaType] || "mp4")
+      : mediaType === "image/png" ? "png" : mediaType === "image/webp" ? "webp" : "jpg";
     $("downloadPhoto").download = `${memory.title.replace(/[\\/:*?"<>|]/g, "-")}.${extension}`;
+    $("downloadPhoto").textContent = isVideo ? "下载视频" : "下载照片";
     $("editMemory").hidden = !canEdit(memory);
     $("deleteMemory").hidden = !canEdit(memory);
     const multiple = state.lightboxList.length > 1;
@@ -841,10 +926,10 @@
         memories.push({
           id: memory.id, title: memory.title, location: memory.location, date: memory.date,
           distance: memory.distance, note: memory.note, createdAt: memory.createdAt,
-          fileName: memory.fileName || "徒步照片", data: await blobToDataURL(memory.blob)
+          mediaType: mediaTypeOf(memory), fileName: memory.fileName || "徒步照片", data: await blobToDataURL(memory.blob)
         });
       }
-      const payload = JSON.stringify({ app: "hiking-memories", version: 1, exportedAt: new Date().toISOString(), memories });
+      const payload = JSON.stringify({ app: "hiking-memories", version: 2, exportedAt: new Date().toISOString(), memories });
       const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
@@ -873,7 +958,7 @@
         const record = {
           id, title: item.title, location: item.location || "", date: item.date || "",
           distance: item.distance || "", note: item.note || "", createdAt: item.createdAt || Date.now(),
-          fileName: item.fileName || "徒步照片", blob
+          mediaType: item.mediaType || "", fileName: item.fileName || "徒步照片", blob
         };
         await withStore("readwrite", store => store.put(record));
         state.memories.push(customMemory(record));
@@ -900,6 +985,7 @@
   ["dragleave", "drop"].forEach(name => $("uploadZone").addEventListener(name, event => { event.preventDefault(); $("uploadZone").classList.remove("dragging"); }));
   $("uploadZone").addEventListener("drop", event => setPendingFiles(event.dataTransfer.files));
   $("closeLightbox").addEventListener("click", () => closeDialog($("lightbox")));
+  $("lightbox").addEventListener("close", () => $("lightboxVideo").pause());
   $("previousPhoto").addEventListener("click", () => moveLightbox(-1));
   $("nextPhoto").addEventListener("click", () => moveLightbox(1));
   $("deleteMemory").addEventListener("click", deleteCurrentMemory);
@@ -1042,11 +1128,11 @@
       try {
         $("syncHint").textContent = `正在上传 ${done + failed + 1} / ${pending.length}：${memory.title}`;
         const file = new File([memory.blob], memory.fileName || "徒步照片.jpg", { type: memory.blob.type || "image/jpeg" });
-        const imageData = await prepareCloudPhoto(file);
+        const media = await prepareCloudMedia(file);
         const row = {
           id: memory.id, title: memory.title, location: memory.location || "", date: memory.date || "",
           distance: memory.distance || "", note: memory.note || "", file_name: memory.fileName || "徒步照片",
-          image_data: imageData, created_at_ms: memory.createdAt || Date.now()
+          media_type: media.mediaType, image_data: media.dataUrl, created_at_ms: memory.createdAt || Date.now()
         };
         const { error } = await cloud.database.from("memories").insert(row).select();
         // 云端已存在同 id 记录（23505）视为已同步，直接清理本机副本

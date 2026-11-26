@@ -37,11 +37,11 @@
   .photo-layer { position: fixed; z-index: 4; inset: 0; pointer-events: none; overflow: hidden; }
   .photo-chip { position: absolute; display: block; padding: 4px 4px 13px; border: 0; border-radius: 2px; background: #f5efe0; box-shadow: 0 7px 22px rgba(0, 0, 0, .5), 0 0 18px rgba(233, 196, 122, .18); cursor: pointer; pointer-events: auto; will-change: left, top, width, transform; }
   .photo-chip::before { content: ""; position: absolute; left: 50%; top: -4px; width: 8px; height: 8px; transform: translateX(-50%); border-radius: 50%; background: var(--gold); box-shadow: 0 0 9px rgba(233, 196, 122, .8); }
-  .photo-chip img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #10231d; }
+  .photo-chip img, .photo-chip video { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #10231d; }
   .photo-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .focus-card { position: fixed; z-index: 9; left: 50%; top: 50%; display: grid; grid-template-columns: minmax(220px, 42vw) minmax(220px, 300px); gap: 0; width: min(820px, calc(100vw - 40px)); max-height: calc(100vh - 100px); transform: translate(-50%, -50%); overflow: hidden; border: 1px solid rgba(233, 196, 122, .3); border-radius: 18px; color: var(--ink); background: rgba(7, 23, 18, .94); backdrop-filter: blur(20px); box-shadow: 0 30px 100px rgba(0, 0, 0, .65); animation: focus-pop .38s ease; }
   @keyframes focus-pop { from { transform: translate(-50%, -50%) scale(.88); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
-  .focus-card img { display: block; width: 100%; height: 100%; min-height: 340px; max-height: 62vh; object-fit: cover; }
+  .focus-card img, .focus-card video { display: block; width: 100%; height: 100%; min-height: 340px; max-height: 62vh; object-fit: cover; }
   .focus-content { position: relative; padding: 34px 26px; overflow: auto; }
   .focus-date { color: var(--gold); font-size: 10px; letter-spacing: .14em; }
   .focus-content h2 { margin: 12px 0 8px; font-family: "Songti SC", "STSong", serif; font-size: 28px; font-weight: 500; }
@@ -62,7 +62,7 @@
     .hint { left: 14px; right: 14px; bottom: 14px; max-width: none; padding: 10px 12px; font-size: 10px; }
     .camera-preview { right: 14px; bottom: 112px; width: 92px; height: 69px; }
     .focus-card { grid-template-columns: 1fr; width: calc(100vw - 24px); max-height: calc(100vh - 130px); overflow: auto; }
-    .focus-card img { height: 35vh; min-height: 220px; max-height: none; }
+    .focus-card img, .focus-card video { height: 35vh; min-height: 220px; max-height: none; }
     .focus-content { padding: 22px 20px; }
   }
 </style>
@@ -93,6 +93,7 @@
 
 <section class="focus-card" id="focusCard" aria-label="聚焦的徒步回忆" hidden>
   <img id="focusImage" alt="聚焦的徒步照片" />
+  <video id="focusVideo" controls loop playsinline hidden></video>
   <div class="focus-content">
     <div class="focus-date" id="focusDate"></div>
     <h2 id="focusTitle"></h2>
@@ -138,6 +139,37 @@
 
   let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, treeH = 0, baseR = 0, focal = 1;
   let particles = [], bgStars = [], sparks = [], photoObjectUrls = [], motes = [], canopyTips = [];
+
+  // 徒步美感语录：未填写心情时，按回忆稳定分配一句（同一回忆每次打开都是同一句）
+  const HIKE_QUOTES = [
+    "山不见我，我自去见山。",
+    "那天的山风和脚步，都留在这里。",
+    "一步一步，把日子走成风景。",
+    "风从山上来，带着自由的味道。",
+    "山在那里，路在脚下。",
+    "走得越远，离自己越近。",
+    "山顶的风景，只对坚持的人可见。",
+    "慢下来，山野会告诉你答案。",
+    "每一步都算数，每一帧都值得。",
+    "去山里，把心事走成云海。",
+    "山高路远，步履不停。",
+    "与山野相遇的每一天，都是好日子。",
+    "云在肩上，风在耳边，路在脚下。",
+    "走过四季山川，收藏人间浪漫。",
+    "山风知我意，吹梦到山巅。",
+    "一路向前，山海皆温柔。"
+  ];
+  function quoteFor(memory) {
+    let hash = 0;
+    const key = String((memory && (memory.id || memory.title)) || "");
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    return HIKE_QUOTES[hash % HIKE_QUOTES.length];
+  }
+  function isVideoMemory(memory) {
+    if (memory.mediaType) return /^video\//i.test(memory.mediaType);
+    if (memory.blob && memory.blob.type) return /^video\//i.test(memory.blob.type);
+    return /^data:video\//i.test(memory.src || "") || /\.(mp4|webm|mov)(\?|#|$)/i.test(memory.src || "");
+  }
   let bgGrad = null, floorGrad = null, vignette = null, dbPromise = null;
   const spriteCache = {};
   const palette = {
@@ -243,11 +275,12 @@
   async function loadCloudPhotos() {
     if (!cloud) return [];
     const { data, error } = await cloud.database.from("memories")
-      .select("id, title, location, date, distance, note, image_data, created_at_ms")
+      .select("id, title, location, date, distance, note, image_data, media_type, created_at_ms")
       .order("created_at_ms", { ascending: false }).limit(500);
     if (error) throw error;
     return (data || []).map(row => ({
       id: row.id, src: row.image_data, custom: true, cloud: true,
+      mediaType: row.media_type || (/^data:video\//i.test(row.image_data || "") ? "video/mp4" : "image"),
       title: row.title || "山野回忆", location: row.location || "", date: row.date || "",
       distance: row.distance || "", note: row.note || "", createdAt: Number(row.created_at_ms) || 0
     }));
@@ -303,10 +336,21 @@
       button.className = "photo-chip";
       button.type = "button";
       button.setAttribute("aria-label", `聚焦 ${memory.title}`);
-      const image = document.createElement("img");
-      image.src = memory.src;
-      image.alt = memory.title;
-      image.draggable = false;
+      const image = isVideoMemory(memory)
+        ? (() => {
+            const video = document.createElement("video");
+            video.src = memory.src + "#t=0.1";
+            video.muted = true; video.loop = true; video.playsInline = true;
+            video.preload = "metadata"; video.setAttribute("playsinline", "");
+            return video;
+          })()
+        : (() => {
+            const img = document.createElement("img");
+            img.src = memory.src;
+            img.alt = memory.title;
+            img.draggable = false;
+            return img;
+          })();
       button.appendChild(image);
       button.addEventListener("click", () => {
         state.focusIndex = index;
@@ -587,6 +631,7 @@
     $("focusCard").hidden = mode !== "FOCUS";
     $("photoLayer").hidden = mode === "FOCUS";
     if (mode === "FOCUS") renderFocus();
+    else $("focusVideo").pause();
     if (!state.gestureActive) {
       $("status").textContent = mode === "TREE" ? "树形模式 · 鼠标与触控可用" :
         mode === "SCATTER" ? "星野模式 · 拖拽旋转视角" : "照片聚焦模式 · 左右切换回忆";
@@ -596,12 +641,23 @@
   function renderFocus() {
     const memory = state.shownPhotos[state.focusIndex % Math.max(state.shownPhotos.length, 1)];
     if (!memory) return;
-    $("focusImage").src = memory.src;
+    const video = $("focusVideo");
+    const isVideo = isVideoMemory(memory);
+    if (isVideo) {
+      video.src = memory.src;
+      video.hidden = false;
+      video.play().catch(() => { /* 浏览器拦截时保留 controls 手动播放 */ });
+    } else {
+      video.pause(); video.removeAttribute("src"); video.load();
+      video.hidden = true;
+      $("focusImage").src = memory.src;
+    }
+    $("focusImage").hidden = isVideo;
     $("focusImage").alt = memory.title;
     $("focusDate").textContent = formatDate(memory.date);
     $("focusTitle").textContent = memory.title;
     $("focusPlace").textContent = memory.location || "山野之间";
-    $("focusNote").textContent = memory.note || "那天的山风和脚步，都留在这里。";
+    $("focusNote").textContent = memory.note || quoteFor(memory);
     $("focusRoute").textContent = memory.distance || "路线与距离未记录";
   }
 
