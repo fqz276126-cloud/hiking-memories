@@ -39,7 +39,8 @@
   .photo-chip::before { content: ""; position: absolute; left: 50%; top: -4px; width: 8px; height: 8px; transform: translateX(-50%); border-radius: 50%; background: var(--gold); box-shadow: 0 0 9px rgba(233, 196, 122, .8); }
   .photo-chip img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #10231d; }
   .photo-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
-  .focus-card { position: fixed; z-index: 9; left: 50%; top: 50%; display: grid; grid-template-columns: minmax(220px, 42vw) minmax(220px, 300px); gap: 0; width: min(820px, calc(100vw - 40px)); max-height: calc(100vh - 100px); transform: translate(-50%, -50%); overflow: hidden; border: 1px solid rgba(233, 196, 122, .3); border-radius: 18px; color: var(--ink); background: rgba(7, 23, 18, .94); backdrop-filter: blur(20px); box-shadow: 0 30px 100px rgba(0, 0, 0, .65); }
+  .focus-card { position: fixed; z-index: 9; left: 50%; top: 50%; display: grid; grid-template-columns: minmax(220px, 42vw) minmax(220px, 300px); gap: 0; width: min(820px, calc(100vw - 40px)); max-height: calc(100vh - 100px); transform: translate(-50%, -50%); overflow: hidden; border: 1px solid rgba(233, 196, 122, .3); border-radius: 18px; color: var(--ink); background: rgba(7, 23, 18, .94); backdrop-filter: blur(20px); box-shadow: 0 30px 100px rgba(0, 0, 0, .65); animation: focus-pop .38s ease; }
+  @keyframes focus-pop { from { transform: translate(-50%, -50%) scale(.88); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
   .focus-card img { display: block; width: 100%; height: 100%; min-height: 340px; max-height: 62vh; object-fit: cover; }
   .focus-content { position: relative; padding: 34px 26px; overflow: auto; }
   .focus-date { color: var(--gold); font-size: 10px; letter-spacing: .14em; }
@@ -79,13 +80,14 @@
     <button class="control-button" data-mode="SCATTER" type="button">散成星野</button>
     <button class="control-button" data-mode="FOCUS" type="button">聚焦照片</button>
     <button class="control-button gesture" id="gestureButton" type="button">启用手势</button>
+    <button class="control-button" id="musicButton" type="button">播放音乐</button>
   </div>
 </div>
 <div class="status" id="status">鼠标与触控模式</div>
 <div class="hint" id="hint">
   <strong>把走过的山，聚成一棵树</strong>
   拖拽旋转，滚轮缩放，点击照片进入聚焦。按 1 / 2 / 3 切换模式，H 隐藏界面。<br />
-  启用摄像头后：握拳聚拢，张手散开，食指向上聚焦照片。
+  启用摄像头后：握拳聚拢，张手散开；比 ✌️ 放大离手最近的照片，左右移动手切换回忆，握拳返回树形。
 </div>
 <div class="photo-layer" id="photoLayer"></div>
 
@@ -122,7 +124,7 @@
     rot: 0, rotationVelocity: 0, zoom: 1, dragging: false, lastPointerX: 0,
     gestureActive: false, gestureRecognizer: null, stream: null, lastVideoTime: -1,
     lastGesture: "", gestureCounter: 0, lastModeTime: 0, lastEffectTime: 0,
-    interfaceHidden: false, toastTimer: null
+    interfaceHidden: false, toastTimer: null, photoScreenXs: [], lastGestureSwitch: 0
   };
 
   let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, treeH = 0, baseR = 0, focal = 1;
@@ -493,9 +495,11 @@
     const cosR = Math.cos(state.rot);
     const sinR = Math.sin(state.rot);
     const children = $("photoLayer").children;
+    state.photoScreenXs = [];
     for (let i = 0; i < children.length; i++) {
       const target = state.photoPositions[i][state.mode === "TREE" ? "tree" : "scatter"];
       const pr = project(target.x, target.y, target.z, cosR, sinR);
+      state.photoScreenXs.push(pr.sx);
       const baseSize = Math.max(44, Math.min(84, treeH * .112));
       const size = baseSize * Math.max(.72, Math.min(1.14, pr.sc));
       const visible = pr.sx > -size && pr.sx < W + size && pr.sy > -size && pr.sy < H + size;
@@ -650,6 +654,17 @@
     if (showStatus) $("status").textContent = "鼠标与触控模式";
   }
 
+  function nearestPhotoIndex(handX) {
+    const xs = state.photoScreenXs || [];
+    if (!xs.length || !state.shownPhotos.length) return 0;
+    let best = 0, bestDist = Infinity;
+    xs.forEach((x, i) => {
+      const d = Math.abs(x - handX * W);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    return best;
+  }
+
   function predictGesture() {
     if (!state.gestureActive || !state.gestureRecognizer) return;
     const video = $("webcam");
@@ -672,6 +687,7 @@
       const gesture = results.gestures && results.gestures[0] && results.gestures[0][0] ? results.gestures[0][0].categoryName : "";
       if (gesture === state.lastGesture) state.gestureCounter++;
       else { state.gestureCounter = 0; state.lastGesture = gesture; }
+      const handX = landmarks && landmarks[9] ? landmarks[9].x : null;
       const modeMap = { Closed_Fist: "TREE", Open_Palm: "SCATTER", Pointing_Up: "FOCUS" };
       const mapped = modeMap[gesture];
       if (mapped && state.gestureCounter >= 4 && mapped !== state.mode && now - state.lastModeTime > 900) {
@@ -679,7 +695,23 @@
         setMode(mapped, true);
         state.lastModeTime = now;
       }
-      if (["ILoveYou", "Thumb_Up", "Victory"].includes(gesture) && now - state.lastEffectTime > 2200) {
+      if (gesture === "Victory" && state.gestureCounter >= 3) {
+        if (state.mode !== "FOCUS" && state.shownPhotos.length) {
+          state.focusIndex = nearestPhotoIndex(handX == null ? .5 : handX);
+          setMode("FOCUS", true);
+          burst(W / 2, H / 2, 30);
+          showToast("✌️ 已放大这张回忆：左右移动手切换，握拳返回树形");
+        } else if (state.mode === "FOCUS" && handX != null && state.shownPhotos.length && now - state.lastGestureSwitch > 1100) {
+          if (handX < .38) {
+            state.focusIndex = (state.focusIndex - 1 + state.shownPhotos.length) % state.shownPhotos.length;
+            renderFocus(); burst(W / 2, H / 2, 20); state.lastGestureSwitch = now;
+          } else if (handX > .62) {
+            state.focusIndex = (state.focusIndex + 1) % state.shownPhotos.length;
+            renderFocus(); burst(W / 2, H / 2, 20); state.lastGestureSwitch = now;
+          }
+        }
+      }
+      if (["ILoveYou", "Thumb_Up"].includes(gesture) && now - state.lastEffectTime > 2200) {
         state.lastEffectTime = now;
         burst(W * (.35 + Math.random() * .3), H * (.35 + Math.random() * .25), gesture === "ILoveYou" ? 110 : 65);
       }
@@ -688,10 +720,116 @@
     requestAnimationFrame(predictGesture);
   }
 
+  // ---------- 原创氛围音乐（Web Audio 实时生成，无需外部音频文件） ----------
+  const music = { ctx: null, playing: false, padTimer: null, bellTimer: null, master: null, send: null };
+  const musicChords = [
+    [220.00, 261.63, 329.63],
+    [174.61, 220.00, 261.63],
+    [196.00, 246.94, 293.66],
+    [261.63, 329.63, 392.00]
+  ];
+  const musicNotes = [440, 493.88, 523.25, 587.33, 659.25, 783.99, 880];
+
+  function musicPad(ctx, freqs) {
+    const t = ctx.currentTime;
+    freqs.forEach(f => {
+      [0, 1].forEach(k => {
+        const osc = ctx.createOscillator();
+        osc.type = k ? "sine" : "triangle";
+        osc.frequency.value = f * (k ? 1.004 : 1);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(k ? .028 : .042, t + 3.6);
+        gain.gain.linearRampToValueAtTime(.0001, t + 9.2);
+        osc.connect(gain);
+        gain.connect(music.master);
+        osc.start(t);
+        osc.stop(t + 9.4);
+      });
+    });
+  }
+
+  function musicBell(ctx) {
+    if (!music.playing) return;
+    const f = musicNotes[Math.floor(Math.random() * musicNotes.length)];
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = f;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(.11, t + .02);
+    gain.gain.exponentialRampToValueAtTime(.0001, t + 2.6);
+    osc.connect(gain);
+    gain.connect(music.master);
+    gain.connect(music.send);
+    osc.start(t);
+    osc.stop(t + 2.8);
+    music.bellTimer = setTimeout(() => musicBell(ctx), 900 + Math.random() * 1700);
+  }
+
+  async function startMusic() {
+    if (music.playing) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) { showToast("当前浏览器不支持音频播放"); return; }
+    try {
+      if (!music.ctx) {
+        const ctx = new AudioContext();
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = 2400;
+        const master = ctx.createGain();
+        master.gain.value = .5;
+        const delay = ctx.createDelay(1);
+        delay.delayTime.value = .42;
+        const feedback = ctx.createGain();
+        feedback.gain.value = .32;
+        const send = ctx.createGain();
+        send.gain.value = .55;
+        master.connect(filter);
+        filter.connect(ctx.destination);
+        send.connect(delay);
+        delay.connect(feedback);
+        feedback.connect(delay);
+        delay.connect(master);
+        music.ctx = ctx;
+        music.master = master;
+        music.send = send;
+      }
+      if (music.ctx.state === "suspended") await music.ctx.resume();
+      music.playing = true;
+      let chordIndex = 0;
+      musicPad(music.ctx, musicChords[0]);
+      music.padTimer = setInterval(() => {
+        chordIndex = (chordIndex + 1) % musicChords.length;
+        musicPad(music.ctx, musicChords[chordIndex]);
+      }, 8000);
+      music.bellTimer = setTimeout(() => musicBell(music.ctx), 1300);
+      $("musicButton").textContent = "暂停音乐";
+      $("musicButton").classList.add("active");
+      showToast("背景音乐已开启 · 原创氛围纯音乐");
+    } catch (error) {
+      showToast("音频启动失败：" + error.message);
+    }
+  }
+
+  function stopMusic() {
+    music.playing = false;
+    clearInterval(music.padTimer);
+    clearTimeout(music.bellTimer);
+    if (music.ctx && music.ctx.state === "running") music.ctx.suspend();
+    $("musicButton").textContent = "播放音乐";
+    $("musicButton").classList.remove("active");
+  }
+
+  $("musicButton").addEventListener("click", () => { if (music.playing) stopMusic(); else startMusic(); });
+
   $("gestureButton").addEventListener("click", async () => {
     if (state.gestureActive) await stopGesture();
     else await initGesture();
   });
+
+  window.addEventListener("pagehide", () => { if (music.playing) stopMusic(); });
 
   buildScene();
   loadPhotos();
