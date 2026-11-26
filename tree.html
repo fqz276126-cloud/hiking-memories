@@ -305,23 +305,89 @@
   }
 
   function renderPhotoChips() {
-    const limit = W < 600 ? 5 : 8;
+    const total = state.memories.length;
+    // 照片变多就多挂一些（桌面最多 14 张、手机最多 9 张），并保持主枝大图、侧枝小图的错落
+    const limit = W < 600
+      ? Math.min(9, Math.max(5, Math.ceil(total * .45)))
+      : Math.min(14, Math.max(8, Math.ceil(total * .6)));
     state.shownPhotos = state.memories.slice(0, limit);
-    // 照片光点沿枝梢自然分布：外层明亮枝梢承载高光回忆，内层弱光安放沿途随拍
-    const bigTips = canopyTips.filter(tip => tip.big);
-    const smallTips = canopyTips.filter(tip => !tip.big);
-    const fallbackTips = bigTips.length ? bigTips : canopyTips;
-    const bigCount = Math.max(1, Math.ceil(state.shownPhotos.length / 3));
+    // 照片光点沿枝梢自然分布：外层明亮枝梢承载高光回忆，内层弱光安放沿途随拍；
+    // 只用树冠区域的枝梢（低垂近地的枝梢不挂照片，避免飘到树外）
+    const inCanopy = tip => tip.y < treeH * .1;
+    const bigTips = canopyTips.filter(tip => tip.big && inCanopy(tip));
+    const smallTips = canopyTips.filter(tip => !tip.big && inCanopy(tip));
+    const byAngle = list => list.map(tip => ({ tip, a: Math.atan2(tip.z, tip.x) })).sort((x, y) => x.a - y.a);
+    const bigSorted = byAngle(bigTips.length ? bigTips : canopyTips);
+    const smallSorted = byAngle(smallTips.length ? smallTips : (bigTips.length ? bigTips : canopyTips));
+    const bigCount = Math.min(Math.max(1, Math.ceil(state.shownPhotos.length / 3)), state.shownPhotos.length);
+    // 挑选枝梢：最远优先采样保证分布均匀，并在多个旋转角度下做屏幕投影间距检查——
+    // 树会缓慢自转，旋转中短暂掠过属自然，但常态视角下要保持间距；
+    // 枝梢紧张时自动放宽阈值，优先保证不重复、尽量散开
+    const rotSamples = [-1.2, -.6, 0, .6, 1.2].map(a => ({ cos: Math.cos(state.rot + a), sin: Math.sin(state.rot + a) }));
+    const chosenPts = [], usedTips = new Set();
+    const pickSpaced = (sorted, count) => {
+      const out = [];
+      let threshold = treeH * .12, relaxations = 0;
+      const floorT = treeH * .085;
+      const skipped = new Set();
+      const projAt = (tip, r) => project(tip.x, tip.y, tip.z, r.cos, r.sin);
+      while (out.length < count) {
+        const candidates = sorted.map(e => e.tip).filter(t => !usedTips.has(t) && !skipped.has(t));
+        if (!candidates.length) {
+          if (skipped.size && relaxations < 3 && threshold > floorT) {
+            skipped.clear(); threshold = Math.max(threshold * .78, floorT); relaxations++; continue;
+          }
+          break;
+        }
+        // farthest-first：选与已选集合当前视角距离最远的枝梢
+        let best = null, bestD = -1;
+        for (const cand of candidates) {
+          const pr = projAt(cand, rotSamples[2]);
+          const d = chosenPts.length
+            ? Math.min(...chosenPts.map(p => Math.hypot(p[2].sx - pr.sx, p[2].sy - pr.sy)))
+            : 1;
+          if (d > bestD) { bestD = d; best = cand; }
+        }
+        const prs = rotSamples.map(r => projAt(best, r));
+        let gap = Infinity;
+        for (const p of chosenPts) for (let ri = 0; ri < rotSamples.length; ri++) {
+          const g = Math.hypot(p[ri].sx - prs[ri].sx, p[ri].sy - prs[ri].sy);
+          if (g < gap) gap = g;
+        }
+        if (gap >= threshold) { out.push(best); usedTips.add(best); chosenPts.push(prs); }
+        else skipped.add(best);
+      }
+      // 兜底：枝梢用尽仍未凑满时，选与已选集合距离最大的枝梢（允许重叠但尽量散开）
+      while (out.length < count && sorted.length) {
+        let best = null, bestD = -1;
+        for (const entry of sorted) {
+          const cand = entry.tip;
+          const pr = projAt(cand, rotSamples[2]);
+          const d = chosenPts.length
+            ? Math.min(...chosenPts.map(p => Math.hypot(p[2].sx - pr.sx, p[2].sy - pr.sy)))
+            : 1;
+          if (d > bestD) { bestD = d; best = cand; }
+        }
+        if (!best) break;
+        out.push(best);
+        chosenPts.push(rotSamples.map(r => projAt(best, r)));
+      }
+      return out;
+    };
+    const chosenBig = pickSpaced(bigSorted, bigCount);
+    const chosenSmall = pickSpaced(smallSorted, state.shownPhotos.length - chosenBig.length);
+    const jitter = () => (Math.random() - .5) * treeH * .028;
     state.photoPositions = state.shownPhotos.map((memory, index) => {
-      const pool = index < bigCount ? fallbackTips : (smallTips.length ? smallTips : fallbackTips);
-      const tip = pool.length ? pool[(index * 5 + 3) % pool.length] : null;
-      const jitter = () => (Math.random() - .5) * treeH * .035;
+      const onBig = index < chosenBig.length;
+      const tip = onBig
+        ? chosenBig[index]
+        : (chosenSmall[index - chosenBig.length] || chosenBig[index % Math.max(chosenBig.length, 1)] || null);
       const treePos = tip
         ? { x: tip.x + jitter(), y: tip.y + jitter(), z: tip.z + jitter() }
         : { x: 0, y: 0, z: 0 };
       return {
         tree: treePos,
-        sizeFactor: tip ? (tip.big ? 1.14 : .92) : 1,
+        sizeFactor: tip ? (onBig ? 1.12 : .88) : 1,
         scatter: {
           x: (Math.sin(index * 12.9898) * .5) * treeH * 2.1,
           y: (Math.cos(index * 7.233) * .5) * treeH * 1.3,
@@ -850,7 +916,9 @@
       const pr = project(target.x, target.y, target.z, cosR, sinR);
       state.photoScreenXs.push(pr.sx);
       const baseSize = Math.max(44, Math.min(70, treeH * .095));
-      const size = baseSize * Math.max(.72, Math.min(1.14, pr.sc)) * (state.photoPositions[i].sizeFactor || 1);
+      // 照片多时整体略微缩小，保持透气感
+      const density = Math.max(.74, 1 - Math.max(0, state.shownPhotos.length - 8) * .035);
+      const size = baseSize * density * Math.max(.72, Math.min(1.14, pr.sc)) * (state.photoPositions[i].sizeFactor || 1);
       const visible = pr.sx > -size && pr.sx < W + size && pr.sy > -size && pr.sy < H + size;
       const element = children[i];
       element.style.left = pr.sx + "px";
@@ -867,7 +935,7 @@
     if (!frame.last) frame.last = now;
     const dt = Math.min((now - frame.last) / 1000, .05);
     frame.last = now;
-    if (!reduceMotion) state.rot += dt * .035;
+    if (!reduceMotion) state.rot += dt * .02;
     state.rot += state.rotationVelocity * dt;
     state.rotationVelocity *= .96;
 
