@@ -137,12 +137,13 @@
   };
 
   let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, treeH = 0, baseR = 0, focal = 1;
-  let particles = [], bgStars = [], sparks = [], photoObjectUrls = [];
+  let particles = [], bgStars = [], sparks = [], photoObjectUrls = [], motes = [], canopyTips = [];
   let bgGrad = null, floorGrad = null, vignette = null, dbPromise = null;
   const spriteCache = {};
   const palette = {
     forest: "#1c9e6c", green: "#4bbd88", sage: "#8df7c4", gold: "#e9c47a",
-    warm: "#ffb469", ice: "#dff3ff", red: "#ff7f8f", blue: "#93d8ff"
+    warm: "#ffb469", ice: "#dff3ff", red: "#ff7f8f", blue: "#93d8ff",
+    teal: "#2fe0b8", deep: "#143c30"
   };
 
   function showToast(message, duration = 3400) {
@@ -273,12 +274,21 @@
   function renderPhotoChips() {
     const limit = W < 600 ? 5 : 8;
     state.shownPhotos = state.memories.slice(0, limit);
+    // 照片光点沿枝梢自然分布：外层明亮枝梢承载高光回忆，内层弱光安放沿途随拍
+    const bigTips = canopyTips.filter(tip => tip.big);
+    const smallTips = canopyTips.filter(tip => !tip.big);
+    const fallbackTips = bigTips.length ? bigTips : canopyTips;
+    const bigCount = Math.max(1, Math.ceil(state.shownPhotos.length / 3));
     state.photoPositions = state.shownPhotos.map((memory, index) => {
-      const t = .34 + ((index + .5) / Math.max(state.shownPhotos.length, 1)) * .5;
-      const angle = index * 2.39996 + .45;
-      const radius = baseR * Math.pow(t, .92) * 1.46;
+      const pool = index < bigCount ? fallbackTips : (smallTips.length ? smallTips : fallbackTips);
+      const tip = pool.length ? pool[(index * 5 + 3) % pool.length] : null;
+      const jitter = () => (Math.random() - .5) * treeH * .035;
+      const treePos = tip
+        ? { x: tip.x + jitter(), y: tip.y + jitter(), z: tip.z + jitter() }
+        : { x: 0, y: 0, z: 0 };
       return {
-        tree: { x: Math.cos(angle) * radius, y: -treeH * .5 + t * treeH, z: Math.sin(angle) * radius },
+        tree: treePos,
+        sizeFactor: tip ? (tip.big ? 1.14 : .92) : 1,
         scatter: {
           x: (Math.sin(index * 12.9898) * .5) * treeH * 2.1,
           y: (Math.cos(index * 7.233) * .5) * treeH * 1.3,
@@ -317,7 +327,7 @@
     canvas.style.height = H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-    treeH = Math.min(H * .64, W * .92);
+    treeH = Math.min(H * .88, W * 1.2);
     baseR = treeH * .31;
     cx = W / 2;
     cy = H * .52;
@@ -328,8 +338,8 @@
     bgGrad.addColorStop(.45, "#071610");
     bgGrad.addColorStop(1, "#030a08");
     floorGrad = ctx.createRadialGradient(cx, cy + treeH * .5, 0, cx, cy + treeH * .5, baseR * 2.7);
-    floorGrad.addColorStop(0, "rgba(75,189,136,.22)");
-    floorGrad.addColorStop(.4, "rgba(45,130,100,.08)");
+    floorGrad.addColorStop(0, "rgba(47,224,184,.26)");
+    floorGrad.addColorStop(.4, "rgba(35,140,110,.1)");
     floorGrad.addColorStop(1, "rgba(0,0,0,0)");
     vignette = ctx.createRadialGradient(cx, H * .5, Math.min(W, H) * .3, cx, H * .5, Math.max(W, H) * .8);
     vignette.addColorStop(0, "rgba(0,0,0,0)");
@@ -340,29 +350,216 @@
       tw: Math.random() * Math.PI * 2, sp: .5 + Math.random() * 1.7, alpha: .2 + Math.random() * .55
     }));
 
-    const count = W < 600 ? 620 : 1100;
-    const lightColors = [palette.gold, palette.red, palette.blue, palette.sage, palette.warm];
-    particles = Array.from({ length: count }, (_, index) => {
-      const t = Math.random();
-      const tierPhase = (t * 7) % 1;
-      const radius = baseR * Math.pow(t, .92) * (.9 + .1 * tierPhase) * (.96 + Math.random() * .06);
-      const angle = t * 6.2 * Math.PI * 2 + (index % 7) * (Math.PI * 2 / 7) + (Math.random() - .5) * .22;
-      const tree = { x: Math.cos(angle) * radius, y: -treeH * .5 + t * treeH, z: Math.sin(angle) * radius };
-      const scatter = {
-        x: (Math.random() - .5) * treeH * 2.6,
-        y: (Math.random() - .5) * treeH * 1.7,
-        z: (Math.random() - .5) * treeH * 1.8
-      };
-      const isLight = Math.random() < .085;
-      return {
-        x: scatter.x, y: scatter.y, z: scatter.z, tree, scatter,
-        color: isLight ? lightColors[Math.floor(Math.random() * lightColors.length)] :
-          (Math.random() < .18 ? palette.sage : (Math.random() < .5 ? palette.green : palette.forest)),
-        size: isLight ? 1.7 : .8 + Math.random() * .55,
-        light: isLight, tw: Math.random() * Math.PI * 2,
-        alpha: isLight ? .86 : (.22 + Math.random() * .22) * (.58 + .42 * Math.cos((tierPhase - .5) * Math.PI * .9))
-      };
+    const count = W < 600 ? 2000 : 3200;
+    particles = [];
+    canopyTips = [];
+    const scatterPos = () => ({
+      x: (Math.random() - .5) * treeH * 2.6,
+      y: (Math.random() - .5) * treeH * 1.7,
+      z: (Math.random() - .5) * treeH * 1.8
     });
+    const addParticle = (tree, options) => {
+      const scatter = scatterPos();
+      particles.push({
+        x: scatter.x, y: scatter.y, z: scatter.z, tree, scatter,
+        color: options.color, size: options.size, light: Boolean(options.light),
+        tw: Math.random() * Math.PI * 2, alpha: options.alpha
+      });
+    };
+
+    const leafColor = () => Math.random() < .5 ? palette.sage : (Math.random() < .72 ? palette.green : palette.ice);
+
+    // 1) 树干：苍劲挺拔的暗色实体，缀青色微光脉络
+    const trunkSamples = Math.round(count * .12);
+    for (let i = 0; i < trunkSamples; i++) {
+      const t = Math.random();
+      const y = treeH * .48 - t * treeH * .68;
+      const r = treeH * (.075 - .035 * t) * (0.25 + Math.random() * .95);
+      const a = Math.random() * Math.PI * 2;
+      const vein = Math.random() < .3;
+      addParticle({ x: Math.cos(a) * r, y, z: Math.sin(a) * r }, {
+        color: vein ? palette.teal : palette.deep,
+        size: vein ? 1.2 : 2.8 + Math.random() * 1.2,
+        alpha: vein ? .95 : .98
+      });
+    }
+
+    // 2) 伞状主枝与侧枝：低枝长而舒展，高枝短而上扬，枝梢微垂
+    const MAIN_BRANCHES = W < 600 ? 5 : 7;
+    const branchPoint = (angle, startY, length, s, riseK, droopK, curve) => {
+      const r = treeH * .018 + length * s;
+      const bend = angle + Math.sin(s * Math.PI) * curve;
+      const y = startY - length * riseK * Math.sin(Math.PI * s * .8) + length * droopK * s * s;
+      return { x: Math.cos(bend) * r, y, z: Math.sin(bend) * r };
+    };
+    for (let k = 0; k < MAIN_BRANCHES; k++) {
+      const angle = k * (Math.PI * 2 / MAIN_BRANCHES) + .38 + (Math.random() - .5) * .18;
+      const startY = treeH * (.14 - k * .08);
+      const length = treeH * (.56 - k * .026) * (.93 + Math.random() * .12);
+      const curve = (k % 2 ? .12 : -.12) + (Math.random() - .5) * .06;
+      for (let i = 0; i < 36; i++) {
+        const s = i / 35;
+        const p = branchPoint(angle, startY, length, s, .3, .26, curve);
+        addParticle(p, {
+          color: Math.random() < .35 ? palette.teal : (Math.random() < .45 ? palette.forest : palette.green),
+          size: 1.5, alpha: .9
+        });
+        // 枝上密叶：枝条后半段点缀荧光小叶，与伞冠衔接
+        if (s > .55) {
+          for (let m = 0; m < 2; m++) {
+            addParticle({
+              x: p.x + (Math.random() - .5) * treeH * .045,
+              y: p.y + (Math.random() - .5) * treeH * .035,
+              z: p.z + (Math.random() - .5) * treeH * .045
+            }, { color: leafColor(), size: .8 + Math.random() * .45, alpha: .82 });
+          }
+        }
+      }
+      const tip = branchPoint(angle, startY, length, 1, .3, .26, curve);
+      canopyTips.push({ x: tip.x, y: tip.y, z: tip.z, big: true });
+      for (let j = 0; j < 2; j++) {
+        const s0 = .42 + j * .18;
+        const base = branchPoint(angle, startY, length, s0, .3, .26, curve);
+        const sideAngle = angle + (j ? .62 : -.62) + (Math.random() - .5) * .3;
+        const sideLen = length * (.4 + Math.random() * .16);
+        for (let i = 0; i < 16; i++) {
+          const s = i / 15;
+          addParticle({
+            x: base.x + Math.cos(sideAngle) * sideLen * s,
+            y: base.y - sideLen * .34 * Math.sin(Math.PI * s * .8) + sideLen * .18 * s * s,
+            z: base.z + Math.sin(sideAngle) * sideLen * s
+          }, {
+            color: Math.random() < .35 ? palette.teal : (Math.random() < .5 ? palette.forest : palette.green),
+            size: 1.3, alpha: .85
+          });
+          if (s > .45 && Math.random() < .55) {
+            addParticle({
+              x: base.x + Math.cos(sideAngle) * sideLen * s + (Math.random() - .5) * treeH * .04,
+              y: base.y - sideLen * .34 * Math.sin(Math.PI * s * .8) + sideLen * .18 * s * s + (Math.random() - .5) * treeH * .035,
+              z: base.z + Math.sin(sideAngle) * sideLen * s + (Math.random() - .5) * treeH * .04
+            }, { color: leafColor(), size: .8 + Math.random() * .4, alpha: .82 });
+          }
+        }
+        const droop = sideLen * .18;
+        canopyTips.push({
+          x: base.x + Math.cos(sideAngle) * sideLen,
+          y: base.y - sideLen * .34 * Math.sin(Math.PI * .8) + droop,
+          z: base.z + Math.sin(sideAngle) * sideLen,
+          big: false
+        });
+      }
+    }
+
+    // 3) 伞冠体积填充：扁椭球壳层内密布荧光叶粒，上浓下疏，形成连续伞盖
+    const glowColors = [palette.gold, palette.warm, palette.ice];
+    const crownFill = Math.round(count * .48);
+    const crownYc = -treeH * .15, crownRy = treeH * .34, crownRmax = treeH * .55;
+    for (let i = 0; i < crownFill; i++) {
+      const ny = Math.pow(Math.random(), 1.5) * 2 - 1;
+      const y = crownYc + ny * crownRy;
+      const section = Math.sqrt(Math.max(0, 1 - ny * ny));
+      const a = Math.random() * Math.PI * 2;
+      const r = crownRmax * section * (.5 + .5 * Math.pow(Math.random(), .65));
+      const px = Math.cos(a) * r, py = y + (Math.random() - .5) * treeH * .03, pz = Math.sin(a) * r;
+      if (Math.random() < .045) {
+        // 冠中散布的明亮光点，如萤火栖于叶间
+        addParticle({ x: px, y: py, z: pz }, {
+          color: glowColors[Math.floor(Math.random() * 3)],
+          size: 2.6 + Math.random(), light: true, alpha: .93
+        });
+      } else {
+        addParticle({ x: px, y: py, z: pz }, {
+          color: leafColor(), size: .85 + Math.random() * .55, alpha: .85
+        });
+      }
+    }
+
+    // 3b) 垂枝：冠层底缘垂落的青绿枝条，末端悬着微光
+    const WEEPERS = W < 600 ? 10 : 15;
+    for (let i = 0; i < WEEPERS; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const ny = .15 + Math.random() * .75;
+      const y0 = crownYc + ny * crownRy;
+      const r0 = crownRmax * Math.sqrt(Math.max(0, 1 - ny * ny)) * (.85 + Math.random() * .2);
+      const len = treeH * (.14 + Math.random() * .14);
+      for (let sIdx = 0; sIdx < 7; sIdx++) {
+        const s = sIdx / 7;
+        addParticle({
+          x: Math.cos(a) * r0 + Math.sin(s * 3 + i) * treeH * .008,
+          y: y0 + len * s,
+          z: Math.sin(a) * r0 + Math.cos(s * 2.4 + i) * treeH * .008
+        }, { color: Math.random() < .4 ? palette.teal : palette.green, size: .9, alpha: .7 });
+      }
+      addParticle({ x: Math.cos(a) * r0, y: y0 + len, z: Math.sin(a) * r0 }, {
+        color: glowColors[i % 3], size: 2.2 + Math.random() * .8, light: true, alpha: .88
+      });
+    }
+
+    // 4) 枝梢主光点与垂挂微光：最明亮的大光珠缀在外缘枝梢
+    canopyTips.forEach((tip, index) => {
+      const lights = tip.big ? 2 + (Math.random() < .5 ? 1 : 0) : (Math.random() < .6 ? 1 : 0);
+      for (let i = 0; i < lights; i++) {
+        const ox = (Math.random() - .5) * treeH * .07;
+        const oy = (Math.random() - .5) * treeH * .05;
+        const oz = (Math.random() - .5) * treeH * .07;
+        addParticle({ x: tip.x + ox, y: tip.y + oy, z: tip.z + oz }, {
+          color: glowColors[(index + i) % glowColors.length],
+          size: 3.4 + Math.random() * 1.3, light: true, alpha: .95
+        });
+        const drops = 2 + Math.floor(Math.random() * 2);
+        for (let d = 0; d < drops; d++) {
+          addParticle({
+            x: tip.x + ox + (Math.random() - .5) * treeH * .012,
+            y: tip.y + oy + treeH * (.03 + Math.random() * .07),
+            z: tip.z + oz + (Math.random() - .5) * treeH * .012
+          }, {
+            color: Math.random() < .5 ? palette.sage : palette.ice,
+            size: 1.2 + Math.random() * .6, light: true, alpha: .72
+          });
+        }
+      }
+    });
+
+    // 5) 地面根脉与草丛微光：沿根脉放射线蔓延的青色光丝
+    const groundSamples = Math.round(count * .075);
+    for (let i = 0; i < groundSamples; i++) {
+      let x, z;
+      if (Math.random() < .32) {
+        const a = Math.floor(Math.random() * 6) * Math.PI / 3 + .3;
+        const s = Math.pow(Math.random(), .6);
+        const r = treeH * .05 + s * baseR * 1.7;
+        x = Math.cos(a + s * .5) * r; z = Math.sin(a + s * .5) * r;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const r = treeH * .06 + Math.pow(Math.random(), .7) * baseR * 1.75;
+        x = Math.cos(a) * r; z = Math.sin(a) * r;
+      }
+      addParticle({ x, y: treeH * .5 + Math.random() * treeH * .045, z }, {
+        color: Math.random() < .14 ? palette.gold : (Math.random() < .6 ? palette.green : palette.teal),
+        size: .7 + Math.random() * .55, alpha: .55
+      });
+    }
+
+    // 数量校准：向叶簇补充微粒至目标数量
+    while (particles.length < count && canopyTips.length) {
+      const tip = canopyTips[Math.floor(Math.random() * canopyTips.length)];
+      const rx = treeH * .06;
+      addParticle({
+        x: tip.x + (Math.random() - .5) * rx * 2,
+        y: tip.y + (Math.random() - .5) * rx * 1.2,
+        z: tip.z + (Math.random() - .5) * rx * 2
+      }, { color: leafColor(), size: .85 + Math.random() * .5, alpha: .85 });
+    }
+
+    // 6) 空气中缓缓上浮的细小光尘
+    motes = Array.from({ length: W < 600 ? 16 : 34 }, () => ({
+      x: (Math.random() - .5) * treeH * 1.7,
+      y: Math.random() * treeH * 1.15 - treeH * .55,
+      z: (Math.random() - .5) * treeH * 1.3,
+      r: .4 + Math.random() * .8, sp: 7 + Math.random() * 12,
+      tw: Math.random() * Math.PI * 2, sway: Math.random() * Math.PI * 2
+    }));
+
     renderPhotoChips();
   }
 
@@ -468,20 +665,22 @@
   }
 
   function drawTopper(now) {
-    const pulse = .82 + .18 * Math.sin(now * .0038);
-    const pr = project(0, -treeH * .53, 0, Math.cos(state.rot), Math.sin(state.rot));
-    const size = treeH * .13 * pulse;
-    const sprite = makeSprite(palette.gold);
+    // 树顶灵珠：柔和脉动的青金色光晕，替代圣诞树顶星
+    const pulse = .8 + .2 * Math.sin(now * .0026);
+    const pr = project(0, -treeH * .47, 0, Math.cos(state.rot), Math.sin(state.rot));
+    const size = treeH * .07 * pulse;
+    const sprite = makeSprite(palette.sage);
+    const halo = makeSprite(palette.teal);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = .95;
+    ctx.globalAlpha = .32;
+    const haloSize = size * 2.6;
+    ctx.drawImage(halo, pr.sx - haloSize / 2, pr.sy - haloSize / 2, haloSize, haloSize);
+    ctx.globalAlpha = .85;
     ctx.drawImage(sprite, pr.sx - size / 2, pr.sy - size / 2, size, size);
     ctx.save();
     ctx.translate(pr.sx, pr.sy);
-    ctx.globalAlpha = .5;
-    ctx.scale(4.2, .55);
-    ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
-    ctx.scale(1 / 4.2, 1 / .55);
-    ctx.scale(.55, 4.2);
+    ctx.globalAlpha = .22;
+    ctx.scale(.5, 4.6);
     ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
     ctx.restore();
   }
@@ -516,6 +715,31 @@
     }
   }
 
+  function drawMotes(dt, now) {
+    // 空气中缓缓上浮的细小光尘，舒缓轻盈
+    if (!motes.length) return;
+    ctx.globalCompositeOperation = "lighter";
+    const sprite = makeSprite(palette.ice);
+    const cosR = Math.cos(state.rot);
+    const sinR = Math.sin(state.rot);
+    motes.forEach(mote => {
+      mote.y -= mote.sp * dt;
+      if (mote.y < -treeH * .58) {
+        mote.y = treeH * .55;
+        mote.x = (Math.random() - .5) * treeH * 1.7;
+        mote.z = (Math.random() - .5) * treeH * 1.3;
+      }
+      const swayX = mote.x + Math.sin(now * .0006 + mote.sway) * treeH * .012;
+      const pr = project(swayX, mote.y, mote.z, cosR, sinR);
+      if (pr.sx < -30 || pr.sx > W + 30 || pr.sy < -30 || pr.sy > H + 30) return;
+      const alpha = (.16 + .3 * (.5 + .5 * Math.sin(now * .001 + mote.tw))) * Math.min(1, .3 + pr.sc * .7);
+      if (alpha <= .02) return;
+      const size = mote.r * 8 * pr.sc;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(sprite, pr.sx - size / 2, pr.sy - size / 2, size, size);
+    });
+  }
+
   function drawVignette() {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -533,8 +757,8 @@
       const target = state.photoPositions[i][state.mode === "TREE" ? "tree" : "scatter"];
       const pr = project(target.x, target.y, target.z, cosR, sinR);
       state.photoScreenXs.push(pr.sx);
-      const baseSize = Math.max(44, Math.min(84, treeH * .112));
-      const size = baseSize * Math.max(.72, Math.min(1.14, pr.sc));
+      const baseSize = Math.max(44, Math.min(70, treeH * .095));
+      const size = baseSize * Math.max(.72, Math.min(1.14, pr.sc)) * (state.photoPositions[i].sizeFactor || 1);
       const visible = pr.sx > -size && pr.sx < W + size && pr.sy > -size && pr.sy < H + size;
       const element = children[i];
       element.style.left = pr.sx + "px";
@@ -561,6 +785,7 @@
     drawParticles(now, dt);
     drawTopper(now);
     drawSparks(dt);
+    drawMotes(dt, now);
     drawVignette();
     updatePhotoChips();
     requestAnimationFrame(frame);
