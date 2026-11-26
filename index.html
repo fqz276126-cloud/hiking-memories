@@ -77,6 +77,15 @@
   .view-button { min-height: 34px; padding: 0 15px; border: 0; border-radius: 999px; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; }
   .view-button.active { color: var(--paper); background: var(--ink); }
   .toolbar { display: flex; gap: 12px; margin: 28px 0 30px; }
+  .trip-strip { display: flex; gap: 10px; margin: -8px 0 26px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+  .trip-chip { flex: none; display: flex; flex-direction: column; gap: 3px; min-width: 138px; max-width: 230px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: rgba(255, 254, 249, .6); cursor: pointer; text-align: left; font-family: inherit; transition: border-color .25s, background .25s, transform .25s, box-shadow .25s; }
+  .trip-chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .trip-chip.active { border-color: var(--accent); background: #f7ecd8; box-shadow: 0 6px 18px rgba(140, 100, 40, .16); }
+  .trip-chip .trip-no { font-size: 9px; letter-spacing: .18em; color: var(--accent); }
+  .trip-chip .trip-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trip-chip .trip-meta { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .trip-tree-link { flex: none; align-self: center; display: inline-flex; align-items: center; padding: 11px 18px; border-radius: 999px; color: var(--paper); background: var(--ink); font-size: 12px; text-decoration: none; white-space: nowrap; box-shadow: 0 8px 20px rgba(23, 53, 45, .25); transition: transform .25s, box-shadow .25s; }
+  .trip-tree-link:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(23, 53, 45, .3); }
   .search-wrap { position: relative; flex: 1; }
   .search-wrap svg { position: absolute; left: 16px; top: 50%; width: 17px; height: 17px; transform: translateY(-50%); color: var(--muted); }
   .search-input, .year-select {
@@ -272,6 +281,7 @@
       </div>
       <select class="year-select" id="yearSelect" aria-label="按年份筛选"><option value="all">全部年份</option></select>
     </div>
+    <div class="trip-strip" id="tripStrip" aria-label="按旅程段选择" hidden></div>
     <div class="memory-grid" id="memoryGrid"></div>
     <div class="timeline" id="timeline" hidden></div>
     <div class="empty-state" id="emptyState">
@@ -389,7 +399,8 @@
   const state = {
     memories: [], view: "grid", editingId: null, pendingFiles: [], previewUrls: [],
     dbPromise: null, lightboxList: [], lightboxIndex: 0, toastTimer: null,
-    session: null, cloudOnline: true, pendingOtp: null, otpMethod: "phone", syncing: false
+    session: null, cloudOnline: true, pendingOtp: null, otpMethod: "phone", syncing: false,
+    activeTrip: null
   };
   const objectUrls = [];
   const VIDEO_MAX_BYTES = 20 * 1024 * 1024;
@@ -616,10 +627,56 @@
     return [...items].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
   }
 
+  function tripKeyOf(memory) {
+    return JSON.stringify([memory.title || "", memory.date || "", memory.location || "", memory.distance || "", memory.note || ""]);
+  }
+
+  function computeTrips() {
+    const map = new Map();
+    for (const memory of state.memories) {
+      const key = tripKeyOf(memory);
+      if (!map.has(key)) map.set(key, { key, title: memory.title || "山野回忆", date: memory.date || "", location: memory.location || "", photos: [] });
+      map.get(key).photos.push(memory);
+    }
+    return [...map.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.photos[0].createdAt || 0) - (a.photos[0].createdAt || 0));
+  }
+
+  function renderTripStrip() {
+    const strip = $("tripStrip");
+    strip.textContent = "";
+    const trips = computeTrips();
+    if (trips.length <= 1) { strip.hidden = true; return; }
+    strip.hidden = false;
+    const mkChip = (no, name, meta, key) => {
+      const chip = element("button", "trip-chip" + ((key || null) === state.activeTrip || (!key && !state.activeTrip) ? " active" : ""));
+      chip.type = "button";
+      chip.append(element("span", "trip-no", no), element("span", "trip-name", name), element("span", "trip-meta", meta));
+      chip.addEventListener("click", () => {
+        state.activeTrip = key || null;
+        render();
+        $("memoryGrid").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+      return chip;
+    };
+    strip.appendChild(mkChip("全部", "所有回忆", `${state.memories.length} 张照片`, null));
+    trips.forEach((trip, index) => {
+      strip.appendChild(mkChip(`第 ${index + 1} 段`, trip.title, `${trip.photos.length} 张 · ${trip.date ? formatDate(trip.date, true) : "日期待补充"}`, trip.key));
+    });
+    if (state.activeTrip) {
+      const trip = trips.find(item => item.key === state.activeTrip);
+      if (trip) {
+        const link = element("a", "trip-tree-link", "进入这段旅程的回忆树 →");
+        link.href = `tree.html?trip=${encodeURIComponent(trip.key)}`;
+        strip.appendChild(link);
+      }
+    }
+  }
+
   function filteredMemories() {
     const query = $("searchInput").value.trim().toLowerCase();
     const year = $("yearSelect").value;
     return sortedMemories(state.memories).filter(memory => {
+      if (state.activeTrip && tripKeyOf(memory) !== state.activeTrip) return false;
       const matchesYear = year === "all" || (memory.date || "").startsWith(year);
       const haystack = [memory.title, memory.location, memory.note, memory.distance].join(" ").toLowerCase();
       return matchesYear && (!query || haystack.includes(query));
@@ -706,6 +763,7 @@
 
   function render() {
     updateStats();
+    renderTripStrip();
     const items = filteredMemories();
     const empty = items.length === 0;
     $("emptyState").hidden = !empty;

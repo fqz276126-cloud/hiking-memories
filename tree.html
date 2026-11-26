@@ -286,6 +286,10 @@
     }));
   }
 
+  function tripKeyOf(memory) {
+    return JSON.stringify([memory.title || "", memory.date || "", memory.location || "", memory.distance || "", memory.note || ""]);
+  }
+
   async function loadPhotos() {
     const results = await Promise.allSettled([loadBundledPhotos(), loadCustomPhotos(), loadCloudPhotos()]);
     const bundled = results[0].status === "fulfilled" ? results[0].value : [];
@@ -299,7 +303,19 @@
       if (seen.has(memory.id)) return false;
       seen.add(memory.id);
       return true;
-    }).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    }).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (a.createdAt || 0) - (b.createdAt || 0));
+    // 从记忆馆带 ?trip= 进入时，只展示这一段旅程的照片
+    const tripParam = new URLSearchParams(location.search).get("trip");
+    if (tripParam) {
+      const filtered = state.memories.filter(memory => tripKeyOf(memory) === tripParam);
+      if (filtered.length) {
+        state.memories = filtered;
+        state.tripTitle = filtered[0].title || "这段旅程";
+        showToast(`回忆树正在展示「${state.tripTitle}」的 ${filtered.length} 张照片`, 4200);
+      } else {
+        showToast("没有找到这段旅程，展示全部照片", 4200);
+      }
+    }
     renderPhotoChips();
     if (!state.memories.length) $("status").textContent = "还没有照片，先到记忆馆添加回忆";
   }
@@ -702,8 +718,9 @@
     if (mode === "FOCUS") renderFocus();
     else $("focusVideo").pause();
     if (!state.gestureActive) {
-      $("status").textContent = mode === "TREE" ? "树形模式 · 鼠标与触控可用" :
-        mode === "SCATTER" ? "星野模式 · 拖拽旋转视角" : "照片聚焦模式 · 左右切换回忆";
+      const tripTag = state.tripTitle ? ` · ${state.tripTitle}` : "";
+      $("status").textContent = (mode === "TREE" ? "树形模式 · 鼠标与触控可用" :
+        mode === "SCATTER" ? "星野模式 · 拖拽旋转视角" : "照片聚焦模式 · 左右切换回忆") + tripTag;
     }
   }
 
